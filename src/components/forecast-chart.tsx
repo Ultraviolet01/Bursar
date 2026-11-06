@@ -1,0 +1,78 @@
+"use client";
+// Single-series projected balance with a dashed buffer reference line.
+// One series, so the card title names it and the buffer line is labelled directly.
+import { useState } from "react";
+
+export interface Point { date: string; label: string; value: number }
+
+const fmt = (minor: number) => Math.round(minor / 100).toLocaleString("en-US");
+const compact = (minor: number) => {
+  const v = minor / 100;
+  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}m`;
+  if (Math.abs(v) >= 1_000) return `${Math.round(v / 1_000)}k`;
+  return `${Math.round(v)}`;
+};
+
+export function ForecastChart({ points, buffer, currency }: { points: Point[]; buffer: number; currency: string }) {
+  const [hover, setHover] = useState<number | null>(null);
+  const W = 680, H = 210, L = 44, R = 12, T = 14, B = 28;
+  const values = points.map((p) => p.value);
+  const max = Math.max(...values, buffer) * 1.08 || 1;
+  const min = Math.min(0, ...values);
+  const x = (i: number) => L + (i * (W - L - R)) / Math.max(1, points.length - 1);
+  const y = (v: number) => T + ((max - v) * (H - T - B)) / (max - min || 1);
+  const path = points.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+  const ticks = [0, 0.5, 1].map((f) => min + (max - min) * f);
+  const labelEvery = Math.ceil(points.length / 5);
+
+  return (
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-auto w-full"
+        role="img"
+        aria-label={`Projected balance over ${points.length} days`}
+        onMouseLeave={() => setHover(null)}
+        onMouseMove={(e) => {
+          const r = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+          const px = ((e.clientX - r.left) / r.width) * W;
+          const i = Math.round(((px - L) / (W - L - R)) * (points.length - 1));
+          setHover(Math.max(0, Math.min(points.length - 1, i)));
+        }}
+      >
+        {ticks.map((t) => (
+          <g key={t}>
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#E8ECEB" />
+            <text x={L - 8} y={y(t) + 4} textAnchor="end" className="fill-faint font-mono text-[10px]">{compact(t)}</text>
+          </g>
+        ))}
+        <line x1={L} x2={W - R} y1={y(buffer)} y2={y(buffer)} stroke="#C38A26" strokeDasharray="4 4" strokeWidth={1.25} />
+        <text x={W - R} y={y(buffer) - 6} textAnchor="end" className="fill-amber text-[11px]">Buffer</text>
+        <path d={`${path} L${x(points.length - 1)},${y(min)} L${x(0)},${y(min)} Z`} fill="#0E5E56" opacity={0.06} />
+        <path d={path} fill="none" stroke="#0E5E56" strokeWidth={2} strokeLinejoin="round" />
+        {points.map((p, i) =>
+          (i % labelEvery === 0 && points.length - 1 - i >= labelEvery / 2) || i === points.length - 1 ? (
+            <text key={p.date} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === points.length - 1 ? "end" : "middle"} className="fill-muted text-[11px]">
+              {p.label}
+            </text>
+          ) : null,
+        )}
+        {hover !== null && (
+          <g>
+            <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="#8A989C" strokeWidth={1} />
+            <circle cx={x(hover)} cy={y(points[hover].value)} r={4.5} fill="#0E5E56" stroke="#fff" strokeWidth={2} />
+          </g>
+        )}
+      </svg>
+      {hover !== null && (
+        <div
+          className="pointer-events-none absolute top-0 rounded-lg border border-line bg-surface px-3 py-2 text-sm shadow-sm"
+          style={{ left: `${(x(hover) / W) * 100}%`, transform: hover > points.length / 2 ? "translateX(calc(-100% - 10px))" : "translateX(10px)" }}
+        >
+          <div className="text-muted">{points[hover].label}</div>
+          <div className="num font-medium text-ink">{currency} {fmt(points[hover].value)}</div>
+        </div>
+      )}
+    </div>
+  );
+}

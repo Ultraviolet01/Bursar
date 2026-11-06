@@ -8,7 +8,7 @@ import { decide } from "./decide";
 import { explain } from "./explain";
 import { executeAction } from "./execute";
 import { forecast } from "./forecast";
-import { observe, syncWallets } from "./observe";
+import { observe, syncWallets, todaySpentNgn } from "./observe";
 import { evaluate } from "./policy";
 import { reconcileOpen } from "./reconcile";
 
@@ -43,7 +43,9 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
     const payees = new Map(obs.payments.map((p) => [p.id, p.payee]));
     for (const a of actions) {
       const payee = a.paymentId ? payees.get(a.paymentId) : undefined;
-      const precheck = evaluate(a, { ...obs, payee });
+      // Check against live state: earlier actions in this cycle have already moved money.
+      const live = { ...obs, wallets: await syncWallets(db, client), todaySpentNgn: await todaySpentNgn(db, obs.market.usdNgn) };
+      const precheck = evaluate(a, { ...live, payee });
       const canAuto = (a.type === "PAY" || a.type === "SWAP_THEN_PAY" || a.type === "SWAP") && precheck.autoOk;
       const reasonCode = obs.paused && (a.type === "PAY" || a.type === "SWAP_THEN_PAY") ? "PAUSED" : a.reasonCode;
       let explanation = explain(a, payee?.name, payee ? CATEGORY_LABEL[payee.category] : undefined);
