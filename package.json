@@ -15,7 +15,9 @@
     "db:reset": "tsx prisma/seed.ts",
     "e2e": "node scripts/e2e.mjs",
     "worker": "tsx worker.ts",
-    "cycle": "tsx scripts/run-cycle.ts"
+    "cycle": "tsx scripts/run-cycle.ts",
+    "vercel-build": "node scripts/use-postgres.mjs && prisma generate --schema prisma/schema.postgres.prisma && prisma db push --skip-generate --schema prisma/schema.postgres.prisma && tsx scripts/seed-if-empty.ts && next build",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

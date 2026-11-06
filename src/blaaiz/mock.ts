@@ -159,8 +159,18 @@ export class MockBlaaizClient implements BlaaizClient {
     if (!sink) return;
     const delays = this.opts.delays ?? { processing: 800, final: 2500 };
     const fails = req.accountNumber === MOCK_DEFAULTS.failAccountNumber;
-    setTimeout(() => void this.emit(id, "payout.processing", "PROCESSING", req).catch(() => {}), delays.processing);
-    setTimeout(() => void this.settle(id, fails, req).catch(() => {}), delays.final);
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const run = async () => {
+      await sleep(delays.processing);
+      await this.emit(id, "payout.processing", "PROCESSING", req).catch(() => {});
+      await sleep(Math.max(0, delays.final - delays.processing));
+      await this.settle(id, fails, req).catch(() => {});
+    };
+    // On Vercel a function is frozen once it responds; after() keeps it alive until the
+    // mock webhooks are delivered. Outside a request (tests, worker), plain timers work.
+    import("next/server")
+      .then(({ after }) => after(run))
+      .catch(() => void run());
   }
 
   /** Moves a pending mock payout to its final state and emits the webhook. Public for tests. */

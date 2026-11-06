@@ -9,6 +9,13 @@ import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+// Vercel Cron calls GET with "Authorization: Bearer $CRON_SECRET".
+export async function GET(req: Request) {
+  const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+  if (!process.env.CRON_SECRET || bearer !== process.env.CRON_SECRET) return NextResponse.json({ ok: false }, { status: 401 });
+  return POST(req);
+}
+
 export async function POST(req: Request) {
   const bearer = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   const cron = !!process.env.CRON_SECRET && bearer === process.env.CRON_SECRET;
