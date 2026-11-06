@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { requireCompany } from "@/lib/auth";
+import { SubmitButton } from "@/components/interactive";
+import { CountUp } from "@/components/interactive";
 import { ForecastChart } from "@/components/forecast-chart";
 import { IconCheck, IconLine } from "@/components/icons";
 import { Amount, Empty, PageHeader, Pill, Row, SectionTitle, Tag, TextLink } from "@/components/ui";
@@ -11,15 +14,17 @@ import { CATEGORY_LABEL } from "@/engine/types";
 import { runCycleAction } from "./actions";
 
 export default async function Overview() {
-  const [{ pending, lastCycle, mode, company }, t] = await Promise.all([getShell(), getTreasury()]);
+  const { company: active } = await requireCompany();
+  const companyId = active.id;
+  const [{ pending, lastCycle, mode, company }, t] = await Promise.all([getShell(companyId), getTreasury(companyId)]);
   const [proposals, recent, payeeCount] = await Promise.all([
-    db.action.findMany({ where: { status: "PENDING" }, orderBy: { number: "desc" }, take: 3 }),
-    db.action.findMany({ orderBy: { number: "desc" }, take: 5 }),
-    db.payee.count({ where: { allowlisted: true } }),
+    db.action.findMany({ where: { companyId, status: "PENDING" }, orderBy: { number: "desc" }, take: 3 }),
+    db.action.findMany({ where: { companyId }, orderBy: { number: "desc" }, take: 5 }),
+    db.payee.count({ where: { companyId, allowlisted: true } }),
   ]);
   const payeeNames = new Map(t.payments.map((p) => [p.id, p.payee.name]));
   const extra = await db.scheduledPayment.findMany({
-    where: { id: { in: [...proposals, ...recent].map((a) => a.paymentId).filter((x): x is string => !!x && !payeeNames.has(x)) } },
+    where: { companyId, id: { in: [...proposals, ...recent].map((a) => a.paymentId).filter((x): x is string => !!x && !payeeNames.has(x)) } },
     include: { payee: true },
   });
   for (const p of extra) payeeNames.set(p.id, p.payee.name);
@@ -40,7 +45,7 @@ export default async function Overview() {
       <PageHeader title="Overview" subtitle={`${longToday()}, ${pending === 0 ? "nothing needs you" : `${pending} item${pending > 1 ? "s" : ""} need${pending > 1 ? "" : "s"} you`}`}>
         <a href="/api/export" className="btn-outline">Export</a>
         <form action={runCycleAction}>
-          <button className="btn-primary">Run cycle</button>
+          <SubmitButton pendingText="Running cycle">Run cycle</SubmitButton>
         </form>
       </PageHeader>
 
@@ -73,7 +78,7 @@ export default async function Overview() {
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-[15px] text-body">Total treasury</div>
-              <div className="mt-2"><Amount minor={t.totalNgn} currency="NGN equiv." size="xl" decimals={false} /></div>
+              <div className="mt-2"><Amount minor={t.totalNgn} currency="NGN equiv." size="xl" decimals={false} animate /></div>
               <div className="mt-2 text-[15px] text-muted">
                 {t.wallets.length} wallets on Blaaiz, USD/NGN <span className="num">{t.usdNgn.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
               </div>
@@ -99,7 +104,7 @@ export default async function Overview() {
                 {proposals.map((a) => {
                   const p = JSON.parse(a.payload) as { amount: number; currency: string };
                   return (
-                    <Link key={a.id} href={`/app/approvals?id=${a.id}`} className="block rounded-xl bg-surface px-4 py-3.5 hover:ring-1 hover:ring-amber-line">
+                    <Link key={a.id} href={`/app/approvals?id=${a.id}`} className="block rounded-xl bg-surface px-4 py-3.5 transition hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-amber-line">
                       <div className="flex items-start justify-between gap-3">
                         <span className="text-[15px] font-medium text-ink">{title(a, payeeNames.get(a.paymentId ?? ""))}</span>
                         <span className="num whitespace-nowrap text-sm text-body">{formatMoney(p.amount, p.currency, { decimals: false })}</span>
@@ -127,13 +132,13 @@ export default async function Overview() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-6 md:grid-cols-2">
+      <section className="stagger mt-6 grid gap-6 md:grid-cols-2">
         {CURRENCIES.map((c) => {
           const f = t.fc[c];
           const h = walletHealth(f);
           const w = t.wallets.find((x) => x.currency === c);
           return (
-            <Link href={`/app/wallets?c=${c}`} key={c} className="card block p-6 hover:border-faint">
+            <Link href={`/app/wallets?c=${c}`} key={c} className="card card-hover block p-6">
               <div className="flex items-start justify-between">
                 <div>
                   <div className="text-[16px] font-medium text-ink">{c} wallet</div>
@@ -141,7 +146,7 @@ export default async function Overview() {
                 </div>
                 <Tag>Blaaiz</Tag>
               </div>
-              <div className="mt-5"><Amount minor={f.balance} currency={c} size="lg" /></div>
+              <div className="mt-5"><Amount minor={f.balance} currency={c} size="lg" animate /></div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
                 <div><div className="text-muted">Buffer</div><div className="num mt-0.5 text-ink">{formatMinor(f.buffer, { decimals: false })}</div></div>
                 <div><div className="text-muted">Available</div><div className="num mt-0.5 text-ink">{formatMinor(Math.max(0, f.available), { decimals: false })}</div></div>

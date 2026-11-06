@@ -28,6 +28,7 @@ export const MOCK_DEFAULTS = {
 export type WebhookSink = (rawBody: string, signature: string, timestamp: string) => Promise<unknown>;
 
 export interface MockOptions {
+  companyId: string;
   webhookSecret: string;
   /** Delivers mock webhooks through the real handler. Null disables delivery (tests). */
   sink: WebhookSink | null;
@@ -51,7 +52,7 @@ export class MockBlaaizClient implements BlaaizClient {
   }
 
   async listWallets(): Promise<Wallet[]> {
-    const rows = await this.db.mockWallet.findMany({ orderBy: { currency: "asc" } });
+    const rows = await this.db.mockWallet.findMany({ where: { companyId: this.opts.companyId }, orderBy: { currency: "asc" } });
     return rows.map((w) => ({ id: w.id, currency: w.currency as Currency, balance: bn(w.balance) }));
   }
 
@@ -79,8 +80,8 @@ export class MockBlaaizClient implements BlaaizClient {
 
   async swap(req: SwapRequest): Promise<SwapResult> {
     const [from, to] = await Promise.all([
-      this.db.mockWallet.findUniqueOrThrow({ where: { id: req.fromWalletId } }),
-      this.db.mockWallet.findUniqueOrThrow({ where: { id: req.toWalletId } }),
+      this.db.mockWallet.findFirstOrThrow({ where: { id: req.fromWalletId, companyId: this.opts.companyId } }),
+      this.db.mockWallet.findFirstOrThrow({ where: { id: req.toWalletId, companyId: this.opts.companyId } }),
     ]);
     const r = this.currentUsdNgn();
     const fc = from.currency as Currency;
@@ -103,6 +104,7 @@ export class MockBlaaizClient implements BlaaizClient {
       this.db.mockTransaction.create({
         data: {
           id,
+          companyId: this.opts.companyId,
           type: "swap",
           status: "SUCCESSFUL",
           currency: fc,
@@ -122,7 +124,7 @@ export class MockBlaaizClient implements BlaaizClient {
       where: { merchantReference: req.merchantReference, status: { not: "FAILED" } },
     });
     if (dup) throw new Error(`Mock Blaaiz: merchant_reference ${req.merchantReference} already used`);
-    const wallet = await this.db.mockWallet.findUniqueOrThrow({ where: { id: req.walletId } });
+    const wallet = await this.db.mockWallet.findFirstOrThrow({ where: { id: req.walletId, companyId: this.opts.companyId } });
     const fee = MOCK_DEFAULTS.payoutFee[req.fromCurrency];
     const total = req.toAmount + fee;
     if (bn(wallet.balance) < total) throw new Error(`Mock Blaaiz: insufficient ${req.fromCurrency} balance for payout`);
@@ -132,6 +134,7 @@ export class MockBlaaizClient implements BlaaizClient {
       this.db.mockTransaction.create({
         data: {
           id,
+          companyId: this.opts.companyId,
           type: "payout",
           status: "PENDING",
           currency: req.fromCurrency,
@@ -189,6 +192,7 @@ export class MockBlaaizClient implements BlaaizClient {
     const typeMap: Record<string, string> = { SEND_MONEY: "payout", SWAP: "swap", FUND_WALLET: "collection" };
     const rows = await this.db.mockTransaction.findMany({
       where: {
+        companyId: this.opts.companyId,
         ...(q.status ? { status: q.status } : {}),
         ...(q.type ? { type: typeMap[q.type] } : {}),
         ...(q.merchantReference ? { merchantReference: q.merchantReference } : {}),
@@ -201,7 +205,7 @@ export class MockBlaaizClient implements BlaaizClient {
   }
 
   async getTransaction(id: string): Promise<Transaction> {
-    return toTx(await this.db.mockTransaction.findUniqueOrThrow({ where: { id } }));
+    return toTx(await this.db.mockTransaction.findFirstOrThrow({ where: { id, companyId: this.opts.companyId } }));
   }
 
   verifyWebhook(rawBody: string, signature: string, timestamp: string): boolean {
@@ -210,12 +214,12 @@ export class MockBlaaizClient implements BlaaizClient {
 
   /** Simulates a dev deposit (collection.completed). Mock only. */
   async simulateDeposit(currency: Currency, amount: number) {
-    const w = await this.db.mockWallet.findUniqueOrThrow({ where: { currency } });
+    const w = await this.db.mockWallet.findUniqueOrThrow({ where: { companyId_currency: { companyId: this.opts.companyId, currency } } });
     const id = `mock_collection_${randomUUID().slice(0, 12)}`;
     await this.db.$transaction([
       this.db.mockWallet.update({ where: { id: w.id }, data: { balance: { increment: BigInt(amount) } } }),
       this.db.mockTransaction.create({
-        data: { id, type: "collection", status: "SUCCESSFUL", currency, amount: BigInt(amount), fee: 0n, walletId: w.id, payload: "{}" },
+        data: { id, companyId: this.opts.companyId, type: "collection", status: "SUCCESSFUL", currency, amount: BigInt(amount), fee: 0n, walletId: w.id, payload: "{}" },
       }),
     ]);
     if (this.opts.sink) {

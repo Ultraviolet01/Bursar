@@ -7,23 +7,23 @@ import { loadPolicy, toPaymentInfo } from "./repo";
 import { forecast, type CurrencyForecast } from "../engine/forecast";
 import { MOCK_DEFAULTS } from "../blaaiz/mock";
 
-export async function getShell() {
+export async function getShell(companyId: string) {
   const [company, pending, lastCycle, lastRate] = await Promise.all([
-    db.company.findFirst(),
-    db.action.count({ where: { status: "PENDING" } }),
-    db.cycle.findFirst({ orderBy: { startedAt: "desc" } }),
+    db.company.findUnique({ where: { id: companyId } }),
+    db.action.count({ where: { companyId, status: "PENDING" } }),
+    db.cycle.findFirst({ where: { companyId }, orderBy: { startedAt: "desc" } }),
     db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
   ]);
   return { company, pending, lastCycle, mode: env.mode, usdNgn: lastRate?.rate ?? MOCK_DEFAULTS.baseUsdNgn };
 }
 
-export async function getTreasury() {
+export async function getTreasury(companyId: string) {
   const today = isoDate();
-  const policy = await loadPolicy(db);
+  const policy = await loadPolicy(db, companyId);
   const [wallets, payments, rate] = await Promise.all([
-    db.wallet.findMany({ orderBy: { currency: "asc" } }),
+    db.wallet.findMany({ where: { companyId }, orderBy: { currency: "asc" } }),
     db.scheduledPayment.findMany({
-      where: { status: { in: ["SCHEDULED", "DEFERRED", "PROPOSED"] } },
+      where: { companyId, status: { in: ["SCHEDULED", "DEFERRED", "PROPOSED"] } },
       include: { payee: true },
       orderBy: [{ dueDate: "asc" }, { priority: "asc" }],
     }),

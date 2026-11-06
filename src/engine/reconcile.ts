@@ -14,9 +14,10 @@ export interface PayoutUpdate {
   reason?: string;
 }
 
-export async function applyPayoutUpdate(db: PrismaClient, u: PayoutUpdate): Promise<string> {
+export async function applyPayoutUpdate(db: PrismaClient, companyId: string, u: PayoutUpdate): Promise<string> {
   const exec = await db.execution.findFirst({
     where: {
+      companyId,
       kind: "PAYOUT",
       OR: [
         ...(u.transactionId ? [{ blaaizTransactionId: u.transactionId }] : []),
@@ -42,13 +43,14 @@ export async function applyPayoutUpdate(db: PrismaClient, u: PayoutUpdate): Prom
     await db.execution.update({ where: { id: exec.id }, data: { status: "SUCCESSFUL" } });
     if (payment) {
       await db.scheduledPayment.update({ where: { id: payment.id }, data: { status: "PAID", paidAt: new Date() } });
-      await audit(db, "BLAAIZ", `Payout to ${payment.payee.name} completed: ${formatMoney(bn(payment.amount), payment.currency)}`, "ScheduledPayment", payment.id);
+      await audit(db, companyId, "BLAAIZ", `Payout to ${payment.payee.name} completed: ${formatMoney(bn(payment.amount), payment.currency)}`, "ScheduledPayment", payment.id);
       if (payment.recurrence !== "NONE") {
         const nextDue = payment.recurrence === "WEEKLY" ? addDays(payment.dueDate, 7) : addMonths(payment.dueDate, 1);
         const id = `pm_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
         await db.scheduledPayment.create({
           data: {
             id,
+            companyId,
             payeeId: payment.payeeId,
             amount: payment.amount,
             amountType: payment.amountType,
@@ -83,7 +85,8 @@ export async function applyPayoutUpdate(db: PrismaClient, u: PayoutUpdate): Prom
     };
     await db.action.create({
       data: {
-        number: await nextActionNumber(db),
+        companyId,
+        number: await nextActionNumber(db, companyId),
         type: "ESCALATE",
         paymentId: payment.id,
         payload: JSON.stringify(escalation),
@@ -93,20 +96,20 @@ export async function applyPayoutUpdate(db: PrismaClient, u: PayoutUpdate): Prom
         status: "PENDING",
       },
     });
-    await audit(db, "BLAAIZ", `Payout to ${payment.payee.name} failed${u.reason ? `: ${u.reason}` : ""}`, "ScheduledPayment", payment.id);
+    await audit(db, companyId, "BLAAIZ", `Payout to ${payment.payee.name} failed${u.reason ? `: ${u.reason}` : ""}`, "ScheduledPayment", payment.id);
   }
   return "Failed and escalated";
 }
 
 /** Polling fallback for payouts whose webhook never arrived. */
-export async function reconcileOpen(db: PrismaClient, client: BlaaizClient): Promise<number> {
-  const open = await db.execution.findMany({ where: { kind: "PAYOUT", status: { in: ["PENDING", "PROCESSING"] }, blaaizTransactionId: { not: null } } });
+export async function reconcileOpen(db: PrismaClient, client: BlaaizClient, companyId: string): Promise<number> {
+  const open = await db.execution.findMany({ where: { companyId, kind: "PAYOUT", status: { in: ["PENDING", "PROCESSING"] }, blaaizTransactionId: { not: null } } });
   let changed = 0;
   for (const e of open) {
     try {
       const tx = await client.getTransaction(e.blaaizTransactionId!);
       if (tx.status === "SUCCESSFUL" || tx.status === "FAILED") {
-        await applyPayoutUpdate(db, { transactionId: tx.id, status: tx.status });
+        await applyPayoutUpdate(db, companyId, { transactionId: tx.id, status: tx.status });
         changed++;
       }
     } catch {

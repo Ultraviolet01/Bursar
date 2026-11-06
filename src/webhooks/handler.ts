@@ -21,8 +21,10 @@ export interface WebhookResult {
   body: { ok: boolean; message: string };
 }
 
-export async function handleBlaaizWebhook(rawBody: string, signature: string | null, timestamp: string | null): Promise<WebhookResult> {
-  const client = getBlaaiz();
+export async function handleBlaaizWebhook(companyId: string, rawBody: string, signature: string | null, timestamp: string | null): Promise<WebhookResult> {
+  const company = await db.company.findUnique({ where: { id: companyId } });
+  if (!company) return { status: 404, body: { ok: false, message: "Unknown company" } };
+  const client = await getBlaaiz(companyId);
   const valid = !!signature && !!timestamp && client.verifyWebhook(rawBody, signature, timestamp);
 
   let parsed: z.infer<typeof EventSchema> | null = null;
@@ -39,16 +41,16 @@ export async function handleBlaaizWebhook(rawBody: string, signature: string | n
   const dedupeKey = `${eventType}:${txId ?? ref ?? ""}`;
 
   const row = await db.webhookEvent.create({
-    data: { eventType, rawBody, signatureValid: valid, dedupeKey, relatedTransactionId: txId },
+    data: { companyId, eventType, rawBody, signatureValid: valid, dedupeKey, relatedTransactionId: txId },
   });
 
   if (!valid) {
     await db.webhookEvent.update({ where: { id: row.id }, data: { note: "Rejected: invalid signature" } });
-    await audit(db, "BLAAIZ", `Rejected webhook ${eventType}: invalid signature`, "WebhookEvent", row.id);
+    await audit(db, companyId, "BLAAIZ", `Rejected webhook ${eventType}: invalid signature`, "WebhookEvent", row.id);
     return { status: 401, body: { ok: false, message: "Invalid signature" } };
   }
 
-  const dup = await db.webhookEvent.findFirst({ where: { dedupeKey, processedAt: { not: null }, id: { not: row.id } } });
+  const dup = await db.webhookEvent.findFirst({ where: { companyId, dedupeKey, processedAt: { not: null }, id: { not: row.id } } });
   if (dup) {
     await db.webhookEvent.update({ where: { id: row.id }, data: { processedAt: new Date(), note: "Duplicate, ignored" } });
     return { status: 200, body: { ok: true, message: "Duplicate" } };
@@ -56,14 +58,14 @@ export async function handleBlaaizWebhook(rawBody: string, signature: string | n
 
   let note = "Ignored";
   if (eventType === "payout.initiated" || eventType === "payout.processing") {
-    note = await applyPayoutUpdate(db, { transactionId: txId, merchantReference: ref, status: "PROCESSING" });
+    note = await applyPayoutUpdate(db, companyId, { transactionId: txId, merchantReference: ref, status: "PROCESSING" });
   } else if (eventType === "payout.completed") {
-    note = await applyPayoutUpdate(db, { transactionId: txId, merchantReference: ref, status: "SUCCESSFUL" });
+    note = await applyPayoutUpdate(db, companyId, { transactionId: txId, merchantReference: ref, status: "SUCCESSFUL" });
   } else if (eventType === "payout.failed") {
-    note = await applyPayoutUpdate(db, { transactionId: txId, merchantReference: ref, status: "FAILED", reason: data.reason as string | undefined });
+    note = await applyPayoutUpdate(db, companyId, { transactionId: txId, merchantReference: ref, status: "FAILED", reason: data.reason as string | undefined });
   } else if (eventType === "collection.completed" || eventType === "virtual_account.credited") {
-    await syncWallets(db, client);
-    await audit(db, "BLAAIZ", `Wallet funded (${eventType}). Balances refreshed.`, "WebhookEvent", row.id);
+    await syncWallets(db, client, companyId);
+    await audit(db, companyId, "BLAAIZ", `Wallet funded (${eventType}). Balances refreshed.`, "WebhookEvent", row.id);
     note = "Wallets refreshed";
   }
   await db.webhookEvent.update({ where: { id: row.id }, data: { processedAt: new Date(), note } });

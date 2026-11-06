@@ -1,10 +1,13 @@
 import { PageHeader, Pill } from "@/components/ui";
+import { requireCompany } from "@/lib/auth";
+import { SubmitButton } from "@/components/interactive";
 import { db } from "@/lib/db";
 import { CATEGORY_LABEL, type Category } from "@/engine/types";
 import { createPayee, toggleAllowlist, toggleCritical } from "../actions";
 
 export default async function Payees() {
-  const payees = await db.payee.findMany({ orderBy: [{ allowlisted: "asc" }, { name: "asc" }], include: { _count: { select: { payments: true } } } });
+  const { company } = await requireCompany();
+  const payees = await db.payee.findMany({ where: { companyId: company.id }, orderBy: [{ allowlisted: "asc" }, { name: "asc" }], include: { _count: { select: { payments: true } } } });
   const waiting = payees.filter((p) => !p.allowlisted).length;
   return (
     <>
@@ -13,12 +16,13 @@ export default async function Payees() {
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] text-left text-[15px]">
+              <caption className="sr-only">Payees</caption>
               <thead className="bg-canvas/60 text-muted">
-                <tr>{["Payee", "Category", "Pays to", "Critical", "Allowlist"].map((h) => <th key={h} className="px-5 py-3 font-normal">{h}</th>)}</tr>
+                <tr>{["Payee", "Category", "Pays to", "Critical", "Allowlist"].map((h) => <th key={h} scope="col" className="px-5 py-3 font-normal">{h}</th>)}</tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {payees.map((p) => (
-                  <tr key={p.id}>
+                  <tr key={p.id} className="transition-colors hover:bg-canvas/60">
                     <td className="px-5 py-4">
                       <div className="text-ink">{p.name}</div>
                       <div className="text-sm text-muted">{p.currency}, {p._count.payments} payment{p._count.payments === 1 ? "" : "s"}</div>
@@ -31,14 +35,14 @@ export default async function Payees() {
                     <td className="px-5 py-4">
                       <form action={toggleCritical}>
                         <input type="hidden" name="id" value={p.id} />
-                        <button className="text-sm">{p.critical ? <Pill tone="teal">Critical</Pill> : <span className="text-muted hover:text-ink">Can wait</span>}</button>
+                        <button className="rounded-full text-sm transition hover:opacity-80" aria-label={`${p.critical ? "Critical" : "Can wait"}: ${p.name}. Toggle`}>{p.critical ? <Pill tone="teal">Critical</Pill> : <span className="text-muted hover:text-ink">Can wait</span>}</button>
                       </form>
                     </td>
                     <td className="px-5 py-4">
                       <form action={toggleAllowlist} className="flex items-center gap-3">
                         <input type="hidden" name="id" value={p.id} />
                         {p.allowlisted ? <Pill tone="good">Allowlisted</Pill> : <Pill tone="amber">Needs approval</Pill>}
-                        <button className="text-sm text-teal hover:underline">{p.allowlisted ? "Remove" : "Allow"}</button>
+                        <SubmitButton className="rounded-md px-2 py-1 text-sm text-teal transition hover:bg-teal-tint" pendingText="Saving">{p.allowlisted ? "Remove" : "Allow"}<span className="sr-only"> {p.name}</span></SubmitButton>
                       </form>
                     </td>
                   </tr>
@@ -73,7 +77,7 @@ export default async function Payees() {
               <div><label className="label" htmlFor="phone">Phone (momo)</label><input id="phone" name="phone" className="input" placeholder="+234..." /></div>
             </div>
             <div><label className="label" htmlFor="accountName">Account name</label><input id="accountName" name="accountName" className="input" /></div>
-            <button className="btn-primary w-full">Add payee</button>
+            <SubmitButton className="btn-primary w-full" pendingText="Adding">Add payee</SubmitButton>
           </div>
         </form>
       </div>

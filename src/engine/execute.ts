@@ -22,6 +22,7 @@ export async function executeAction(
   opts: { ownerApproved: boolean },
 ): Promise<ExecuteOutcome> {
   const action = await db.action.findUniqueOrThrow({ where: { id: actionId } });
+  const companyId = action.companyId;
   const proposed = JSON.parse(action.payload) as ProposedAction;
   const kind = proposed.type === "ESCALATE" ? proposed.plan?.kind ?? "PAY" : proposed.type;
   const swap = proposed.type === "ESCALATE" ? proposed.plan?.swap : proposed.swap;
@@ -36,7 +37,7 @@ export async function executeAction(
   // Idempotency: one payout per payment occurrence.
   if (payment) {
     const prior = await db.execution.findFirst({
-      where: { kind: "PAYOUT", idempotencyKey: payment.merchantReference, status: { not: "FAILED" } },
+      where: { companyId, kind: "PAYOUT", idempotencyKey: payment.merchantReference, status: { not: "FAILED" } },
     });
     if (prior || payment.status === "PAID" || payment.status === "EXECUTING") {
       await db.action.update({ where: { id: action.id }, data: { status: "SKIPPED", explanation: `${action.explanation} Skipped: this occurrence was already paid.` } });
@@ -45,10 +46,10 @@ export async function executeAction(
   }
 
   // Live re-check.
-  const [company, policy] = await Promise.all([getCompany(db), loadPolicy(db)]);
-  const wallets = await syncWallets(db, client);
+  const [company, policy] = await Promise.all([getCompany(db, companyId), loadPolicy(db, companyId)]);
+  const wallets = await syncWallets(db, client, companyId);
   const market = await loadMarket(db, client, false);
-  const spent = await todaySpentNgn(db, market.usdNgn);
+  const spent = await todaySpentNgn(db, companyId, market.usdNgn);
   const live: ProposedAction = { ...proposed, type: kind, swap };
   const result = evaluate(live, {
     policy,
@@ -71,11 +72,11 @@ export async function executeAction(
   try {
     if (swap) {
       const key = `swap-${action.id}`;
-      const done = await db.execution.findFirst({ where: { kind: "SWAP", idempotencyKey: key, status: "SUCCESSFUL" } });
+      const done = await db.execution.findFirst({ where: { companyId, kind: "SWAP", idempotencyKey: key, status: "SUCCESSFUL" } });
       if (!done) {
         const req = { fromWalletId: walletId(swap.from)!, toWalletId: walletId(swap.to)!, amount: swap.toAmount, amountType: "to" as const };
         const exec = await db.execution.create({
-          data: { actionId: action.id, kind: "SWAP", idempotencyKey: key, request: JSON.stringify(req), status: "PENDING" },
+          data: { companyId, actionId: action.id, kind: "SWAP", idempotencyKey: key, request: JSON.stringify(req), status: "PENDING" },
         });
         try {
           const res = await client.swap(req);
@@ -83,7 +84,7 @@ export async function executeAction(
             where: { id: exec.id },
             data: { response: JSON.stringify(res), blaaizTransactionId: res.transactionId, status: res.status === "FAILED" ? "FAILED" : "SUCCESSFUL" },
           });
-          await audit(db, "BURSAR", `Swapped ${formatMoney(res.fromAmount, swap.from)} to ${formatMoney(res.toAmount, swap.to)} at ${res.rate ?? swap.rate}`, "Action", action.id);
+          await audit(db, companyId, "BURSAR", `Swapped ${formatMoney(res.fromAmount, swap.from)} to ${formatMoney(res.toAmount, swap.to)} at ${res.rate ?? swap.rate}`, "Action", action.id);
         } catch (e) {
           await db.execution.update({ where: { id: exec.id }, data: { status: "FAILED", response: JSON.stringify({ error: String(e) }) } });
           throw e;
@@ -109,6 +110,7 @@ export async function executeAction(
       };
       const exec = await db.execution.create({
         data: {
+          companyId,
           actionId: action.id,
           kind: "PAYOUT",
           idempotencyKey: payment.merchantReference,
@@ -126,7 +128,7 @@ export async function executeAction(
           where: { id: payment.id },
           data: { status: "EXECUTING", blaaizTransactionId: res.transactionId },
         });
-        await audit(db, "BURSAR", `Sent payout ${formatMoney(proposed.amount, proposed.currency)} to ${payment.payee.name}`, "Action", action.id);
+        await audit(db, companyId, "BURSAR", `Sent payout ${formatMoney(proposed.amount, proposed.currency)} to ${payment.payee.name}`, "Action", action.id);
       } catch (e) {
         await db.execution.update({ where: { id: exec.id }, data: { status: "FAILED", response: JSON.stringify({ error: String(e) }) } });
         throw e;
@@ -135,12 +137,12 @@ export async function executeAction(
 
     await db.action.update({ where: { id: action.id }, data: { status: "EXECUTED" } });
     // Recorded when Blaaiz confirms; this is the live balance after debits.
-    await syncWallets(db, client);
+    await syncWallets(db, client, companyId);
     return { status: "EXECUTED", message: "Done", policy: result };
   } catch (e) {
     await db.action.update({ where: { id: action.id }, data: { status: "FAILED", explanation: `${action.explanation} Failed: ${String(e).slice(0, 200)}` } });
     if (payment) await db.scheduledPayment.update({ where: { id: payment.id }, data: { status: "SCHEDULED" } });
-    await audit(db, "BURSAR", `Execution failed: ${String(e).slice(0, 200)}`, "Action", action.id);
+    await audit(db, companyId, "BURSAR", `Execution failed: ${String(e).slice(0, 200)}`, "Action", action.id);
     return { status: "FAILED", message: String(e) };
   }
 }

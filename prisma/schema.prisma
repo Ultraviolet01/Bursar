@@ -9,26 +9,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A founder signs in once and can run several companies.
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  companies    Company[]
+  sessions     Session[]
+}
+
+model Session {
+  id              String   @id // sha256 of the cookie token, never the token itself
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeCompanyId String?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+}
+
 model Company {
   id               String  @id @default(cuid())
+  ownerId          String
+  owner            User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name             String
   baseCurrency     String  @default("NGN")
   blaaizCustomerId String?
+  // Live-mode credentials, encrypted with BURSAR_SECRET_KEY (AES-256-GCM). Never plain text.
+  blaaizClientId        String?
+  blaaizClientSecretEnc String?
+  blaaizWebhookSecretEnc String?
   paused           Boolean @default(false)
   createdAt        DateTime @default(now())
 }
 
 model Wallet {
   id             String   @id @default(cuid())
-  blaaizWalletId String   @unique
-  currency       String   @unique
+  companyId      String
+  blaaizWalletId String
+  currency       String
   label          String
   balance        BigInt
   updatedAt      DateTime @updatedAt
+
+  @@unique([companyId, currency])
 }
 
 model WalletSnapshot {
   id             String   @id @default(cuid())
+  companyId      String
   blaaizWalletId String
   currency       String
   balance        BigInt
@@ -45,6 +75,7 @@ model RateSnapshot {
 
 model Payee {
   id            String   @id @default(cuid())
+  companyId     String
   name          String
   category      String   // PAYROLL | CRITICAL_VENDOR | SAAS | DOMAIN | VENDOR | UTILITY
   currency      String
@@ -64,6 +95,7 @@ model Payee {
 
 model ScheduledPayment {
   id                String   @id @default(cuid())
+  companyId         String
   payeeId           String
   payee             Payee    @relation(fields: [payeeId], references: [id])
   amount            BigInt
@@ -84,7 +116,7 @@ model ScheduledPayment {
 }
 
 model Policy {
-  id                  String  @id @default("default")
+  companyId           String  @id
   perPaymentCap       String  // JSON {"NGN": minor, "USD": minor}
   dailyCapNgn         BigInt
   perSwapCapNgn       BigInt
@@ -99,6 +131,7 @@ model Policy {
 
 model Cycle {
   id         String    @id @default(cuid())
+  companyId  String
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   trigger    String    // SCHEDULE | MANUAL | WEBHOOK
@@ -109,7 +142,8 @@ model Cycle {
 
 model Action {
   id           String   @id @default(cuid())
-  number       Int      @unique
+  companyId    String
+  number       Int
   cycleId      String?
   cycle        Cycle?   @relation(fields: [cycleId], references: [id])
   type         String   // PAY | SWAP | SWAP_THEN_PAY | DEFER | ESCALATE | HOLD
@@ -124,10 +158,13 @@ model Action {
   decidedAt    DateTime?
   createdAt    DateTime @default(now())
   executions   Execution[]
+
+  @@unique([companyId, number])
 }
 
 model Execution {
   id                  String   @id @default(cuid())
+  companyId           String
   actionId            String
   action              Action   @relation(fields: [actionId], references: [id])
   kind                String   // SWAP | PAYOUT
@@ -144,6 +181,7 @@ model Execution {
 
 model WebhookEvent {
   id                   String    @id @default(cuid())
+  companyId            String?
   eventType            String
   rawBody              String
   signatureValid       Boolean
@@ -157,7 +195,8 @@ model WebhookEvent {
 }
 
 model AuditLog {
-  id      String   @id @default(cuid())
+  id        String   @id @default(cuid())
+  companyId String?
   at      DateTime @default(now())
   actor   String   // BURSAR | OWNER | BLAAIZ
   message String
@@ -167,13 +206,17 @@ model AuditLog {
 
 // Mock-mode Blaaiz state. Only src/blaaiz/mock.ts touches these tables.
 model MockWallet {
-  id       String @id
-  currency String @unique
-  balance  BigInt
+  id        String @id
+  companyId String
+  currency  String
+  balance   BigInt
+
+  @@unique([companyId, currency])
 }
 
 model MockTransaction {
   id                String   @id
+  companyId         String
   type              String   // payout | swap | collection
   status            String
   currency          String

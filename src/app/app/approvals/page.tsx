@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { requireCompany } from "@/lib/auth";
+import { SubmitButton } from "@/components/interactive";
 import type { Payee, ScheduledPayment } from "@prisma/client";
 import { IconArrowRight, IconCheck, IconShield, IconX } from "@/components/icons";
 import { Amount, Empty, PageHeader, Pill } from "@/components/ui";
@@ -15,19 +17,21 @@ type Search = Promise<{ id?: string; tab?: string; blocked?: string }>;
 
 export default async function Approvals({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
+  const { company } = await requireCompany();
+  const companyId = company.id;
   const tab = sp.tab === "decided" ? "decided" : "waiting";
   const [waiting, decided, wallets, policy, rate] = await Promise.all([
-    db.action.findMany({ where: { status: "PENDING" }, orderBy: { number: "desc" } }),
-    db.action.findMany({ where: { decidedBy: "OWNER" }, orderBy: { decidedAt: "desc" }, take: 20 }),
-    db.wallet.findMany(),
-    loadPolicy(db),
+    db.action.findMany({ where: { companyId, status: "PENDING" }, orderBy: { number: "desc" } }),
+    db.action.findMany({ where: { companyId, decidedBy: "OWNER" }, orderBy: { decidedAt: "desc" }, take: 20 }),
+    db.wallet.findMany({ where: { companyId } }),
+    loadPolicy(db, companyId),
     db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
   ]);
   const list = tab === "waiting" ? waiting : decided;
   const selectedId = sp.id ?? list[0]?.id ?? waiting[0]?.id;
-  const selected = selectedId ? await db.action.findUnique({ where: { id: selectedId } }) : null;
+  const selected = selectedId ? await db.action.findFirst({ where: { id: selectedId, companyId } }) : null;
   const paymentIds = [...waiting, ...decided, ...(selected ? [selected] : [])].map((a) => a.paymentId).filter((x): x is string => !!x);
-  const payments = await db.scheduledPayment.findMany({ where: { id: { in: paymentIds } }, include: { payee: true } });
+  const payments = await db.scheduledPayment.findMany({ where: { companyId, id: { in: paymentIds } }, include: { payee: true } });
   const pay = new Map(payments.map((p) => [p.id, p]));
   const bal = (c: string) => bn(wallets.find((w) => w.currency === c)?.balance);
 
@@ -51,7 +55,8 @@ export default async function Approvals({ searchParams }: { searchParams: Search
                 <Link
                   key={a.id}
                   href={`/app/approvals?id=${a.id}${tab === "decided" ? "&tab=decided" : ""}`}
-                  className={`block rounded-xl border px-4 py-3.5 ${active ? "border-teal bg-teal-soft" : "border-transparent hover:bg-canvas"}`}
+                  aria-current={active ? "true" : undefined}
+                  className={`block rounded-xl border px-4 py-3.5 transition-all duration-200 ${active ? "border-teal bg-teal-soft shadow-sm" : "border-transparent hover:translate-x-0.5 hover:bg-canvas"}`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <Pill tone={k.tone}>{k.label}</Pill>
@@ -237,11 +242,11 @@ function Detail({ action, payment, policy, bal, walletIds, rate, blocked }: {
           <div className="flex gap-2">
             <form action={rejectProposal}>
               <input type="hidden" name="id" value={action.id} />
-              <button className="btn-danger">Reject</button>
+              <SubmitButton className="btn-danger" pendingText="Rejecting">Reject</SubmitButton>
             </form>
             <form action={approveProposal}>
               <input type="hidden" name="id" value={action.id} />
-              <button className="btn-primary">Approve and run</button>
+              <SubmitButton pendingText="Running">Approve and run</SubmitButton>
             </form>
           </div>
         )}

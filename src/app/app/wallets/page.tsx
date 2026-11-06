@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { requireCompany } from "@/lib/auth";
+import { SubmitButton } from "@/components/interactive";
 import { Amount, PageHeader, Pill, Row, StatCard, Tag, TextLink } from "@/components/ui";
 import { db } from "@/lib/db";
 import { getTreasury, runwayDays, walletHealth } from "@/lib/dashboard";
@@ -11,8 +13,9 @@ import { runCycleAction, simulateDeposit } from "../actions";
 export default async function Wallets({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   const sp = await searchParams;
   const sel: Currency = sp.c === "USD" ? "USD" : "NGN";
-  const t = await getTreasury();
-  const topUps = await db.action.findMany({ where: { type: "SWAP", status: "PENDING" } });
+  const { company } = await requireCompany();
+  const t = await getTreasury(company.id);
+  const topUps = await db.action.findMany({ where: { companyId: company.id, type: "SWAP", status: "PENDING" } });
   const avgRows = await db.rateSnapshot.findMany({ where: { fetchedAt: { gte: new Date(Date.now() - 7 * 86_400_000) } }, select: { rate: true } });
   const avg = avgRows.length ? avgRows.reduce((s, r) => s + r.rate, 0) / avgRows.length : t.usdNgn;
   const shortfalls = CURRENCIES.filter((c) => t.fc[c].belowBufferOn);
@@ -21,7 +24,7 @@ export default async function Wallets({ searchParams }: { searchParams: Promise<
   const f = t.fc[sel];
   const wallet = t.wallets.find((w) => w.currency === sel);
   const topUp = topUps.find((a) => (JSON.parse(a.payload) as { currency: string }).currency === sel);
-  const mock = getBlaaiz() instanceof MockBlaaizClient;
+  const mock = (await getBlaaiz(company.id)) instanceof MockBlaaizClient;
   const other: Currency = sel === "NGN" ? "USD" : "NGN";
 
   return (
@@ -46,7 +49,7 @@ export default async function Wallets({ searchParams }: { searchParams: Promise<
             const h = walletHealth(fc);
             const w = t.wallets.find((x) => x.currency === c);
             return (
-              <Link key={c} href={`/app/wallets?c=${c}`} className={`block rounded-2xl border p-6 ${c === sel ? "border-teal bg-teal-soft" : "border-line bg-surface hover:border-faint"}`}>
+              <Link key={c} href={`/app/wallets?c=${c}`} aria-current={c === sel ? "true" : undefined} className={`block rounded-2xl border p-6 transition-all duration-200 ${c === sel ? "border-teal bg-teal-soft shadow-sm" : "border-line bg-surface hover:-translate-y-0.5 hover:border-faint hover:shadow-md"}`}>
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="text-[17px] text-ink">{c} wallet</div>
@@ -67,11 +70,13 @@ export default async function Wallets({ searchParams }: { searchParams: Promise<
               <div className="text-[15px] font-medium text-ink">Simulate a deposit</div>
               <p className="mt-1 text-sm text-muted">Mock only. Fires a signed collection.completed webhook.</p>
               <div className="mt-3 flex gap-2">
-                <select name="currency" className="input w-24" defaultValue={sel}>
+                <label htmlFor="dep-cur" className="sr-only">Currency</label>
+                <select id="dep-cur" name="currency" className="input w-24" defaultValue={sel}>
                   {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
                 </select>
-                <input name="amount" className="input" placeholder="Amount" defaultValue={sel === "NGN" ? "1000000" : "500"} />
-                <button className="btn-outline shrink-0">Deposit</button>
+                <label htmlFor="dep-amt" className="sr-only">Amount</label>
+                <input id="dep-amt" name="amount" className="input" placeholder="Amount" inputMode="decimal" defaultValue={sel === "NGN" ? "1000000" : "500"} />
+                <SubmitButton className="btn-outline shrink-0" pendingText="Depositing">Deposit</SubmitButton>
               </div>
             </form>
           )}
@@ -84,7 +89,7 @@ export default async function Wallets({ searchParams }: { searchParams: Promise<
               <div className="mt-1 font-mono text-[14px] text-faint">{wallet?.blaaizWalletId}</div>
             </div>
           </div>
-          <div className="mt-4"><Amount minor={f.balance} currency={sel} size="xl" /></div>
+          <div className="mt-4"><Amount minor={f.balance} currency={sel} size="xl" animate /></div>
 
           <div className="mt-8 flex items-center justify-between">
             <h3 className="text-[18px] text-ink">Next {t.policy.horizonDays} days</h3>
@@ -120,7 +125,7 @@ export default async function Wallets({ searchParams }: { searchParams: Promise<
               {topUp ? (
                 <Link href={`/app/approvals?id=${topUp.id}`} className="btn-primary shrink-0">Review #{topUp.number}</Link>
               ) : (
-                <form action={runCycleAction}><button className="btn-primary shrink-0">Run cycle</button></form>
+                <form action={runCycleAction}><SubmitButton className="btn-primary shrink-0" pendingText="Running cycle">Run cycle</SubmitButton></form>
               )}
             </div>
           )}

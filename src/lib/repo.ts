@@ -19,8 +19,8 @@ export function toPolicyConfig(p: Policy): PolicyConfig {
   };
 }
 
-export async function loadPolicy(db: PrismaClient): Promise<PolicyConfig> {
-  return toPolicyConfig(await db.policy.findUniqueOrThrow({ where: { id: "default" } }));
+export async function loadPolicy(db: PrismaClient, companyId: string): Promise<PolicyConfig> {
+  return toPolicyConfig(await db.policy.findUniqueOrThrow({ where: { companyId } }));
 }
 
 export function toPayeeInfo(p: Payee): PayeeInfo {
@@ -49,17 +49,33 @@ export function toPaymentInfo(p: ScheduledPayment & { payee: Payee }): PaymentIn
   };
 }
 
-export async function getCompany(db: PrismaClient) {
-  return db.company.findFirstOrThrow();
+export async function getCompany(db: PrismaClient, companyId: string) {
+  return db.company.findUniqueOrThrow({ where: { id: companyId } });
 }
 
-export async function nextActionNumber(db: PrismaClient): Promise<number> {
-  const last = await db.action.findFirst({ orderBy: { number: "desc" }, select: { number: true } });
+export async function nextActionNumber(db: PrismaClient, companyId: string): Promise<number> {
+  const last = await db.action.findFirst({ where: { companyId }, orderBy: { number: "desc" }, select: { number: true } });
   return (last?.number ?? 0) + 1;
 }
 
-export async function audit(db: PrismaClient, actor: "BURSAR" | "OWNER" | "BLAAIZ", message: string, refType?: string, refId?: string) {
-  await db.auditLog.create({ data: { actor, message, refType, refId } });
+export async function audit(db: PrismaClient, companyId: string | null, actor: "BURSAR" | "OWNER" | "BLAAIZ", message: string, refType?: string, refId?: string) {
+  await db.auditLog.create({ data: { companyId, actor, message, refType, refId } });
+}
+
+/** Default rules from the spec, used for every new company. */
+export function defaultPolicy(companyId: string) {
+  return {
+    companyId,
+    perPaymentCap: JSON.stringify({ NGN: 200_000_000, USD: 150_000 }),
+    dailyCapNgn: 500_000_000n,
+    perSwapCapNgn: 300_000_000n,
+    buffer: JSON.stringify({ NGN: 30_000_000, USD: 20_000 }),
+    allowedPairs: "NGN>USD,USD>NGN",
+    maxRateDeviationPct: 3,
+    horizonDays: 14,
+    maxDeferDays: 3,
+    autoExecute: true,
+  };
 }
 
 export function merchantReference(paymentId: string, dueDate: string) {

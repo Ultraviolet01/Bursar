@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatMinor } from "@/lib/money";
+import { CountUp } from "./interactive";
 
 export function PageHeader({ title, subtitle, children }: { title: string; subtitle?: React.ReactNode; children?: React.ReactNode }) {
   return (
@@ -36,12 +37,12 @@ export function Tag({ children }: { children: React.ReactNode }) {
 }
 
 /** Big serif amount with a small currency code, as in the reference screens. */
-export function Amount({ minor, currency, size = "lg", decimals = true }: { minor: number; currency: string; size?: "sm" | "md" | "lg" | "xl"; decimals?: boolean }) {
-  const cls = { sm: "text-[24px]", md: "text-[32px]", lg: "text-[40px]", xl: "text-[56px]" }[size];
+export function Amount({ minor, currency, size = "lg", decimals = true, animate = false }: { minor: number; currency: string; size?: "sm" | "md" | "lg" | "xl"; decimals?: boolean; animate?: boolean }) {
+  const cls = { sm: "text-[24px]", md: "text-[32px]", lg: "text-[40px]", xl: "text-[44px] sm:text-[56px]" }[size];
   return (
-    <span className="inline-flex items-baseline gap-2">
-      <span className={`display num leading-none text-ink ${cls}`}>{formatMinor(minor, { decimals })}</span>
-      <span className="text-[15px] text-faint">{currency}</span>
+    <span className="inline-flex flex-wrap items-baseline gap-x-2">
+      <span className={`display num leading-none text-ink ${cls}`}>{animate ? <CountUp value={minor} decimals={decimals ? 2 : 0} /> : formatMinor(minor, { decimals })}</span>
+      <span className="text-[15px] text-muted">{currency}</span>
     </span>
   );
 }

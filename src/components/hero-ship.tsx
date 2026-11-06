@@ -1,3 +1,7 @@
+"use client";
+import { useState } from "react";
+import { IconPause, IconPlay } from "./icons";
+
 // Landing hero scene. Loops two states on 8s (see globals.css):
 //  A: a small payment, the ship rides high and "Your line" stays above water.
 //  B: a large payment, the ship sits low and the line goes under, so it waits for you.
@@ -47,8 +51,19 @@ function Waves({ y, opacity, className }: { y: number; opacity: number; classNam
 }
 
 export function HeroShip() {
+  // WCAG 2.2.2: looping motion needs a pause control.
+  const [paused, setPaused] = useState(false);
   return (
-    <div className="relative overflow-hidden">
+    <div className={`relative overflow-hidden ${paused ? "hero-paused" : ""}`}>
+      <button
+        type="button"
+        onClick={() => setPaused((p) => !p)}
+        aria-pressed={paused}
+        className="absolute bottom-3 right-3 z-20 inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-sm text-ink backdrop-blur transition hover:bg-white sm:bottom-5 sm:right-6"
+      >
+        {paused ? <IconPlay className="h-3.5 w-3.5" /> : <IconPause className="h-3.5 w-3.5" />}
+        {paused ? "Play animation" : "Pause animation"}
+      </button>
       {/* Captions */}
       <div className="pointer-events-none relative z-10 mx-4 mt-2 h-[64px] sm:absolute sm:left-[6%] sm:top-10 sm:m-0 sm:h-auto">
         <div className="hero-capA absolute left-0 top-0 w-[320px] sm:w-[520px]">

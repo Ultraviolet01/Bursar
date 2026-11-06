@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { requireCompany } from "@/lib/auth";
 import type { Prisma } from "@prisma/client";
 import { Amount, PageHeader, Pill, StatCard } from "@/components/ui";
 import { db } from "@/lib/db";
@@ -30,17 +31,19 @@ const WHERE: Record<string, Prisma.ActionWhereInput> = {
 
 export default async function Activity({ searchParams }: { searchParams: Promise<{ tab?: string; limit?: string }> }) {
   const sp = await searchParams;
+  const { company } = await requireCompany();
+  const companyId = company.id;
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : "all";
   const limit = Math.min(500, Number(sp.limit) || 25);
   const since = new Date(Date.now() - 30 * 86_400_000);
 
   const [rate, recent30, total, rows, log, hooks] = await Promise.all([
     db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
-    db.action.findMany({ where: { createdAt: { gte: since } } }),
-    tab === "log" ? Promise.resolve(0) : db.action.count({ where: WHERE[tab] }),
-    tab === "log" ? Promise.resolve([]) : db.action.findMany({ where: WHERE[tab], orderBy: { number: "desc" }, take: limit, include: { executions: true } }),
-    tab === "log" ? db.auditLog.findMany({ orderBy: { at: "desc" }, take: limit }) : Promise.resolve([]),
-    tab === "log" ? db.webhookEvent.findMany({ orderBy: { receivedAt: "desc" }, take: 30 }) : Promise.resolve([]),
+    db.action.findMany({ where: { companyId, createdAt: { gte: since } } }),
+    tab === "log" ? Promise.resolve(0) : db.action.count({ where: { companyId, ...WHERE[tab] } }),
+    tab === "log" ? Promise.resolve([]) : db.action.findMany({ where: { companyId, ...WHERE[tab] }, orderBy: { number: "desc" }, take: limit, include: { executions: true } }),
+    tab === "log" ? db.auditLog.findMany({ where: { companyId }, orderBy: { at: "desc" }, take: limit }) : Promise.resolve([]),
+    tab === "log" ? db.webhookEvent.findMany({ where: { companyId }, orderBy: { receivedAt: "desc" }, take: 30 }) : Promise.resolve([]),
   ]);
   const usdNgn = rate?.rate ?? 1500;
   const moved = recent30
@@ -56,7 +59,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
   const deferred = recent30.filter((a) => a.type === "DEFER").length;
 
   const payIds = rows.map((r) => r.paymentId).filter((x): x is string => !!x);
-  const payees = new Map((await db.scheduledPayment.findMany({ where: { id: { in: payIds } }, include: { payee: true } })).map((p) => [p.id, p.payee.name]));
+  const payees = new Map((await db.scheduledPayment.findMany({ where: { companyId, id: { in: payIds } }, include: { payee: true } })).map((p) => [p.id, p.payee.name]));
 
   return (
     <>
@@ -64,7 +67,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
         <a href="/api/export" className="btn-outline">Export CSV</a>
       </PageHeader>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="card"><StatCard label="Moved, last 30 days"><Amount minor={moved} currency="NGN equiv." size="md" decimals={false} /></StatCard></div>
         <div className="card">
           <StatCard label="Handled alone">
@@ -87,7 +90,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4 sm:p-5">
           <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-canvas p-1">
             {TABS.map((t) => (
-              <Link key={t.key} href={`/app/activity?tab=${t.key}`} className={`tab shrink-0 ${tab === t.key ? "tab-active" : ""}`}>{t.label}</Link>
+              <Link key={t.key} href={`/app/activity?tab=${t.key}`} aria-current={tab === t.key ? "page" : undefined} className={`tab shrink-0 ${tab === t.key ? "tab-active" : ""}`}>{t.label}</Link>
             ))}
           </div>
           <span className="text-sm text-muted">All wallets, all time</span>
@@ -124,10 +127,11 @@ export default async function Activity({ searchParams }: { searchParams: Promise
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[980px] text-left text-[15px]">
+                <caption className="sr-only">Bursar actions for {company.name}</caption>
                 <thead className="bg-canvas/60 text-muted">
                   <tr>
                     {["When", "What happened", "Wallet", "Amount", "Outcome", "Rule checked", "Blaaiz ref"].map((h) => (
-                      <th key={h} className={`px-5 py-3 font-normal ${h === "Amount" ? "text-right" : ""}`}>{h}</th>
+                      <th key={h} scope="col" className={`px-5 py-3 font-normal ${h === "Amount" ? "text-right" : ""}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -138,7 +142,7 @@ export default async function Activity({ searchParams }: { searchParams: Promise
                     const ref = proof(a);
                     const out = a.status === "EXECUTED" && a.type !== "SWAP";
                     return (
-                      <tr key={a.id} className="align-top">
+                      <tr key={a.id} className="align-top transition-colors hover:bg-canvas/60">
                         <td className="whitespace-nowrap px-5 py-4 text-muted">{dateTime(a.createdAt)}</td>
                         <td className="px-5 py-4">
                           <Link href={a.status === "PENDING" || a.decidedBy === "OWNER" ? `/app/approvals?id=${a.id}` : "#"} className="text-ink">{title(a, payees.get(a.paymentId ?? ""))}</Link>

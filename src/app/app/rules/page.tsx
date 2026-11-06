@@ -1,5 +1,7 @@
 import { IconLine } from "@/components/icons";
 import { PageHeader } from "@/components/ui";
+import { requireCompany } from "@/lib/auth";
+import { SubmitButton } from "@/components/interactive";
 import { db } from "@/lib/db";
 import { formatMinor } from "@/lib/money";
 import { loadPolicy } from "@/lib/repo";
@@ -20,14 +22,13 @@ function Field({ name, label, hint, value, suffix }: { name: string; label: stri
   );
 }
 
-export default async function Rules({ searchParams }: { searchParams: Promise<{ saved?: string }> }) {
-  const sp = await searchParams;
-  const p = await loadPolicy(db);
+export default async function Rules() {
+  const { company } = await requireCompany();
+  const p = await loadPolicy(db, company.id);
   const m = (v: number) => formatMinor(v).replace(/,/g, "").replace(/\.00$/, "");
   return (
     <>
       <PageHeader title="Rules" subtitle="Your line. Bursar checks every move against these before money leaves a wallet." />
-      {sp.saved && <div className="mb-6 rounded-xl border border-good/30 bg-good-soft px-4 py-3 text-[15px] text-good">Rules saved. The next cycle uses them.</div>}
       <form action={savePolicy} className="grid gap-6 xl:grid-cols-2">
         <div className="card p-6">
           <h2 className="flex items-center gap-2 text-[18px] text-ink"><IconLine className="h-5 w-7 text-amber" />Limits</h2>
@@ -71,7 +72,7 @@ export default async function Rules({ searchParams }: { searchParams: Promise<{ 
           <div className="mt-6 rounded-xl bg-canvas p-4 text-sm text-muted">
             Always on: one payout per payment occurrence (merchant reference), allowlist for new payees, the pause switch, and a live re-check of every rule right before Blaaiz is called.
           </div>
-          <button className="btn-primary mt-6 w-full sm:w-auto">Save rules</button>
+          <div className="mt-6"><SubmitButton className="btn-primary w-full sm:w-auto" pendingText="Saving">Save rules</SubmitButton></div>
         </div>
       </form>
     </>

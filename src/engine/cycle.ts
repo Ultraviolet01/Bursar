@@ -14,15 +14,17 @@ import { reconcileOpen } from "./reconcile";
 
 export type CycleTrigger = "SCHEDULE" | "MANUAL" | "WEBHOOK";
 
-const g = globalThis as unknown as { __bursarCycleRunning?: boolean };
+// One cycle at a time per company.
+const g = globalThis as unknown as { __bursarCycles?: Set<string> };
+const running = (g.__bursarCycles ??= new Set());
 
-export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: CycleTrigger, today?: string) {
-  if (g.__bursarCycleRunning) throw new Error("A cycle is already running");
-  g.__bursarCycleRunning = true;
-  const cycle = await db.cycle.create({ data: { trigger } });
+export async function runCycle(db: PrismaClient, client: BlaaizClient, companyId: string, trigger: CycleTrigger, today?: string) {
+  if (running.has(companyId)) throw new Error("A cycle is already running for this company");
+  running.add(companyId);
+  const cycle = await db.cycle.create({ data: { companyId, trigger } });
   try {
     // 1. Observe
-    const obs = await observe(db, client, cycle.id, today);
+    const obs = await observe(db, client, companyId, cycle.id, today);
 
     // 2. Forecast (for the summary; decide re-forecasts after its own reservations)
     const fc = forecast({
@@ -34,7 +36,7 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
     });
 
     // 3. Decide
-    const pendingSwaps = await db.action.findMany({ where: { type: "SWAP", status: "PENDING" } });
+    const pendingSwaps = await db.action.findMany({ where: { companyId, type: "SWAP", status: "PENDING" } });
     const pendingTopUps = pendingSwaps.map((a) => (JSON.parse(a.payload) as { currency: Currency }).currency);
     const { actions } = decide({ ...obs, pendingTopUps });
 
@@ -44,7 +46,7 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
     for (const a of actions) {
       const payee = a.paymentId ? payees.get(a.paymentId) : undefined;
       // Check against live state: earlier actions in this cycle have already moved money.
-      const live = { ...obs, wallets: await syncWallets(db, client), todaySpentNgn: await todaySpentNgn(db, obs.market.usdNgn) };
+      const live = { ...obs, wallets: await syncWallets(db, client, companyId), todaySpentNgn: await todaySpentNgn(db, companyId, obs.market.usdNgn) };
       const precheck = evaluate(a, { ...live, payee });
       const canAuto = (a.type === "PAY" || a.type === "SWAP_THEN_PAY" || a.type === "SWAP") && precheck.autoOk;
       const reasonCode = obs.paused && (a.type === "PAY" || a.type === "SWAP_THEN_PAY") ? "PAUSED" : a.reasonCode;
@@ -55,7 +57,8 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
       }
       const row = await db.action.create({
         data: {
-          number: await nextActionNumber(db),
+          companyId,
+          number: await nextActionNumber(db, companyId),
           cycleId: cycle.id,
           type: a.type,
           paymentId: a.paymentId,
@@ -71,7 +74,7 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
       if (a.type === "DEFER") {
         counts.deferred++;
         await db.scheduledPayment.update({ where: { id: a.paymentId! }, data: { status: "DEFERRED", deferCount: { increment: 1 } } });
-        await audit(db, "BURSAR", explanation, "Action", row.id);
+        await audit(db, companyId, "BURSAR", explanation, "Action", row.id);
         continue;
       }
       if (canAuto) {
@@ -92,12 +95,12 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
       }
       counts.waiting++;
       if (a.paymentId) await db.scheduledPayment.update({ where: { id: a.paymentId }, data: { status: "PROPOSED" } });
-      await audit(db, "BURSAR", explanation, "Action", row.id);
+      await audit(db, companyId, "BURSAR", explanation, "Action", row.id);
     }
 
     // 5. Reconcile
-    await reconcileOpen(db, client);
-    await syncWallets(db, client);
+    await reconcileOpen(db, client, companyId);
+    await syncWallets(db, client, companyId);
 
     const below = (Object.values(fc) as { currency: string; belowBufferOn: string | null }[]).filter((f) => f.belowBufferOn);
     const summary =
@@ -113,13 +116,13 @@ export async function runCycle(db: PrismaClient, client: BlaaizClient, trigger: 
             .filter(Boolean)
             .join(", ");
     await db.cycle.update({ where: { id: cycle.id }, data: { finishedAt: new Date(), summary } });
-    await audit(db, "BURSAR", `Cycle finished (${trigger.toLowerCase()}): ${summary}`, "Cycle", cycle.id);
+    await audit(db, companyId, "BURSAR", `Cycle finished (${trigger.toLowerCase()}): ${summary}`, "Cycle", cycle.id);
     return { cycleId: cycle.id, summary, counts };
   } catch (e) {
     await db.cycle.update({ where: { id: cycle.id }, data: { finishedAt: new Date(), error: String(e).slice(0, 500) } });
-    await audit(db, "BURSAR", `Cycle failed: ${String(e).slice(0, 200)}`, "Cycle", cycle.id);
+    await audit(db, companyId, "BURSAR", `Cycle failed: ${String(e).slice(0, 200)}`, "Cycle", cycle.id);
     throw e;
   } finally {
-    g.__bursarCycleRunning = false;
+    running.delete(companyId);
   }
 }

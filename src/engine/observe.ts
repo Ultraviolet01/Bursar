@@ -17,15 +17,15 @@ export interface Observation {
   todaySpentNgn: number;
 }
 
-export async function syncWallets(db: PrismaClient, client: BlaaizClient, cycleId?: string): Promise<WalletState[]> {
+export async function syncWallets(db: PrismaClient, client: BlaaizClient, companyId: string, cycleId?: string): Promise<WalletState[]> {
   const wallets = await client.listWallets();
   for (const w of wallets) {
     await db.wallet.upsert({
-      where: { currency: w.currency },
-      create: { blaaizWalletId: w.id, currency: w.currency, label: `${w.currency} wallet`, balance: BigInt(w.balance) },
+      where: { companyId_currency: { companyId, currency: w.currency } },
+      create: { companyId, blaaizWalletId: w.id, currency: w.currency, label: `${w.currency} wallet`, balance: BigInt(w.balance) },
       update: { blaaizWalletId: w.id, balance: BigInt(w.balance) },
     });
-    if (cycleId) await db.walletSnapshot.create({ data: { blaaizWalletId: w.id, currency: w.currency, balance: BigInt(w.balance), cycleId } });
+    if (cycleId) await db.walletSnapshot.create({ data: { companyId, blaaizWalletId: w.id, currency: w.currency, balance: BigInt(w.balance), cycleId } });
   }
   return wallets.map((w) => ({ currency: w.currency, blaaizWalletId: w.id, balance: w.balance }));
 }
@@ -44,23 +44,23 @@ export async function loadMarket(db: PrismaClient, client: BlaaizClient, record 
   return { usdNgn, usdNgnAvg7d, swapFeeBps };
 }
 
-export async function todaySpentNgn(db: PrismaClient, usdNgn: number): Promise<number> {
+export async function todaySpentNgn(db: PrismaClient, companyId: string, usdNgn: number): Promise<number> {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
-  const execs = await db.execution.findMany({ where: { kind: "PAYOUT", createdAt: { gte: start }, status: { not: "FAILED" } } });
+  const execs = await db.execution.findMany({ where: { companyId, kind: "PAYOUT", createdAt: { gte: start }, status: { not: "FAILED" } } });
   return execs.reduce((s, e) => {
     const r = JSON.parse(e.request) as { fromCurrency: Currency; toAmount: number; _fee?: number };
     return s + toNgn(r.toAmount + (r._fee ?? 0), r.fromCurrency, usdNgn);
   }, 0);
 }
 
-export async function observe(db: PrismaClient, client: BlaaizClient, cycleId?: string, today = isoDate()): Promise<Observation> {
-  const [company, policy] = await Promise.all([getCompany(db), loadPolicy(db)]);
-  const wallets = await syncWallets(db, client, cycleId);
+export async function observe(db: PrismaClient, client: BlaaizClient, companyId: string, cycleId?: string, today = isoDate()): Promise<Observation> {
+  const [company, policy] = await Promise.all([getCompany(db, companyId), loadPolicy(db, companyId)]);
+  const wallets = await syncWallets(db, client, companyId, cycleId);
   const market = await loadMarket(db, client, true);
   const horizonEnd = addDays(today, policy.horizonDays - 1);
   const rows = await db.scheduledPayment.findMany({
-    where: { status: { in: ["SCHEDULED", "DEFERRED"] }, dueDate: { lte: horizonEnd } },
+    where: { companyId, status: { in: ["SCHEDULED", "DEFERRED"] }, dueDate: { lte: horizonEnd } },
     include: { payee: true },
   });
   const payments = rows.map(toPaymentInfo);
@@ -77,7 +77,7 @@ export async function observe(db: PrismaClient, client: BlaaizClient, cycleId?: 
     market,
     payments,
     quotes,
-    todaySpentNgn: await todaySpentNgn(db, market.usdNgn),
+    todaySpentNgn: await todaySpentNgn(db, companyId, market.usdNgn),
   };
 }
 
