@@ -38,6 +38,8 @@ export default {
         badge: { "0%,100%": { transform: "scale(1)" }, "50%": { transform: "scale(1.12)" } },
         draw: { from: { strokeDashoffset: "var(--len, 2000)" }, to: { strokeDashoffset: "0" } },
         fade: { from: { opacity: "0" }, to: { opacity: "1" } },
+        dialog: { from: { opacity: "0", transform: "translateY(16px) scale(0.97)" }, to: { opacity: "1", transform: "none" } },
+        unblur: { from: { filter: "blur(8px)", opacity: "0.7" }, to: { filter: "blur(0)", opacity: "1" } },
       },
       animation: {
         page: "page 420ms cubic-bezier(.2,.7,.2,1) both",
@@ -48,6 +50,8 @@ export default {
         badge: "badge 2.4s ease-in-out infinite",
         draw: "draw 1.1s cubic-bezier(.4,0,.2,1) both",
         fade: "fade 600ms ease-out both",
+        dialog: "dialog 480ms cubic-bezier(.2,.7,.2,1) 150ms both",
+        unblur: "unblur 700ms cubic-bezier(.2,.7,.2,1) both",
       },
     },
   },

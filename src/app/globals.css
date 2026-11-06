@@ -50,6 +50,11 @@ body { font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; -web
 .hero-needle { animation: needle 4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 .hero-extra { animation: extra 8s ease-in-out infinite; }
 
+/* Onboarding: the real interface waits, blurred, behind the dialog. */
+.onboarding-backdrop { filter: blur(7px) saturate(0.9); transform: scale(1.01); transition: filter 600ms ease, transform 600ms ease; }
+.onboarding-leaving .onboarding-backdrop { filter: blur(2px); transform: none; }
+.onboarding-leaving [role="dialog"] { opacity: 0; transform: translateY(-8px) scale(0.98); transition: opacity 450ms ease, transform 450ms ease; }
+
 .hero-paused * { animation-play-state: paused !important; }
 
 /* Scroll reveal (landing and long pages). */

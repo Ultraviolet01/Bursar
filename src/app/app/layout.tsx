@@ -1,5 +1,5 @@
 import { Sidebar } from "@/components/sidebar";
-import { PageTransition, Toaster } from "@/components/interactive";
+import { PageTransition, Toaster, WelcomeReveal } from "@/components/interactive";
 import { requireCompany } from "@/lib/auth";
 import { getShell } from "@/lib/dashboard";
 import { timeAgo } from "@/lib/dates";
@@ -14,6 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const paused = company.paused;
 
   return (
+    <WelcomeReveal>
     <div className="min-h-screen">
       <a href="#main" className="sr-only z-[70] rounded-lg bg-ink px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
         Skip to content
@@ -46,5 +47,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </div>
       <Toaster flash={flash} />
     </div>
+    </WelcomeReveal>
   );
 }

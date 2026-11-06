@@ -65,6 +65,40 @@ export function Toaster({ flash }: { flash: Flash | null }) {
   );
 }
 
+const WELCOME_KEY = "bursar_welcome";
+
+/** Inside the onboarding form: once it submits, start clearing the blur and remember to finish it on arrival. */
+export function WelcomeOnSubmit() {
+  const { pending } = useFormStatus();
+  useEffect(() => {
+    if (!pending) return;
+    try {
+      sessionStorage.setItem(WELCOME_KEY, "1");
+    } catch {}
+    document.body.classList.add("onboarding-leaving");
+  }, [pending]);
+  return null;
+}
+
+/** Wraps the app. Right after onboarding, the interface sharpens out of the blur. */
+export function WelcomeReveal({ children }: { children: React.ReactNode }) {
+  const [reveal, setReveal] = useState(false);
+  useEffect(() => {
+    document.body.classList.remove("onboarding-leaving");
+    try {
+      if (sessionStorage.getItem(WELCOME_KEY)) {
+        sessionStorage.removeItem(WELCOME_KEY);
+        setReveal(true);
+      }
+    } catch {}
+  }, []);
+  return (
+    <div className={reveal ? "animate-unblur" : undefined} onAnimationEnd={(e) => e.target === e.currentTarget && setReveal(false)}>
+      {children}
+    </div>
+  );
+}
+
 /** Fades and lifts each page in on navigation. */
 export function PageTransition({ children }: { children: React.ReactNode }) {
   const path = usePathname();

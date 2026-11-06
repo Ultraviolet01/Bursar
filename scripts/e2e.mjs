@@ -180,12 +180,21 @@ check(await visible(page.getByRole("alert").filter({ hasText: "8 characters" }))
 await page.getByLabel("Password", { exact: true }).fill("a-long-enough-password");
 await page.getByRole("button", { name: "Create account" }).click();
 await page.waitForURL(/onboarding/);
+check(await visible(page.getByRole("dialog", { name: "Add your first company" })), "onboarding opens as a dialog over the interface");
+const blur = await page.locator(".onboarding-backdrop").evaluate((el) => getComputedStyle(el).filter);
+check(/blur\(/.test(blur), `interface behind the dialog is blurred (${blur})`);
+check((await page.locator(".onboarding-backdrop [inert]").count()) === 1, "blurred interface cannot be clicked or tabbed into");
+await shot(page, "onboarding");
 await scan(page, "onboarding");
 await page.getByLabel("Company name").fill("Eze Logistics");
 await page.getByLabel("Fill it with demo data").check();
 await page.getByRole("button", { name: "Create company" }).click();
 await page.waitForURL(`${BASE}/app`);
 check(await visible(page.getByRole("button", { name: /^Eze Logistics.*Switch company$/ })), "new founder lands on their first company");
+await page.waitForTimeout(900);
+check((await page.locator(".onboarding-backdrop").count()) === 0 && (await page.getByRole("dialog").count()) === 0, "overlay is gone; the real interface is live");
+check((await page.getByRole("button", { name: "Run cycle" }).isEnabled()), "founder can interact with the dashboard");
+await shot(page, "after-onboarding");
 await page.goto(`${BASE}/app/approvals`);
 check((await page.getByText("Kaduna").count()) === 0, "new founder cannot see the demo founder's companies");
 

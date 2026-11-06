@@ -1,12 +1,13 @@
-import { SubmitButton } from "./interactive";
+import { SubmitButton, WelcomeOnSubmit } from "./interactive";
 
 /** Shared by onboarding (first company) and "Add a company". */
-export function CompanyForm({ action, mock, first }: { action: (f: FormData) => void | Promise<void>; mock: boolean; first: boolean }) {
+export function CompanyForm({ action, mock, first, onboarding = false }: { action: (f: FormData) => void | Promise<void>; mock: boolean; first: boolean; onboarding?: boolean }) {
   return (
-    <form action={action} className="card space-y-5 p-6 sm:p-8">
+    <form action={action} className={onboarding ? "space-y-5 px-6 pb-6 pt-4 sm:px-8 sm:pb-8" : "card space-y-5 p-6 sm:p-8"}>
+      {onboarding && <WelcomeOnSubmit />}
       <div>
         <label htmlFor="name" className="label">Company name</label>
-        <input id="name" name="name" required minLength={2} className="input" placeholder="Kaduna Freight Ltd" />
+        <input id="name" name="name" required minLength={2} className="input" placeholder="Kaduna Freight Ltd" autoFocus={onboarding} />
       </div>
       {mock ? (
         <fieldset className="space-y-3">
@@ -33,7 +34,7 @@ export function CompanyForm({ action, mock, first }: { action: (f: FormData) => 
       ) : (
         <p className="rounded-xl bg-canvas p-4 text-sm text-muted">After creating it, add this company&apos;s Blaaiz credentials in Settings. Each company is its own Blaaiz business.</p>
       )}
-      <SubmitButton className="btn-primary w-full py-2.5" pendingText="Creating company">Create company</SubmitButton>
+      <SubmitButton className="btn-primary w-full py-2.5" pendingText={onboarding ? "Setting up your dashboard" : "Creating company"}>Create company</SubmitButton>
       <p className="text-sm text-muted">Rules start at the spec defaults: NGN 2,000,000 per payment, NGN 5,000,000 per day, buffers of NGN 300,000 and USD 200. Change them in Rules.</p>
     </form>
   );
