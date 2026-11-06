@@ -3,6 +3,15 @@
 // so both always have the same models.
 import { readFileSync, writeFileSync } from "node:fs";
 
+const url = process.env.DATABASE_URL ?? "";
+if (!/^postgres(ql)?:\/\//.test(url)) {
+  console.error(
+    "\nBursar needs a Postgres database in production, and DATABASE_URL is not a postgres:// URL.\n" +
+      "On Vercel: open the project, Storage tab, Create Database, Neon (Postgres), connect it to this project, then redeploy.\n",
+  );
+  process.exit(1);
+}
+
 const src = readFileSync("prisma/schema.prisma", "utf8");
 const direct = process.env.DATABASE_URL_UNPOOLED ? "DATABASE_URL_UNPOOLED" : process.env.DIRECT_DATABASE_URL ? "DIRECT_DATABASE_URL" : null;
 const datasource = `datasource db {
