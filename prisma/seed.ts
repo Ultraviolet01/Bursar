@@ -23,11 +23,13 @@ async function main() {
     db.policy.deleteMany(),
     db.company.deleteMany(),
     db.session.deleteMany(),
+    db.authToken.deleteMany(),
+    db.devEmail.deleteMany(),
     db.user.deleteMany(),
     db.mockTransaction.deleteMany(),
     db.mockWallet.deleteMany(),
   ]);
-  const user = await db.user.create({ data: { email: DEMO_EMAIL, name: "David Babatunde", passwordHash: hashPassword(DEMO_PASSWORD) } });
+  const user = await db.user.create({ data: { email: DEMO_EMAIL, name: "David Babatunde", passwordHash: hashPassword(DEMO_PASSWORD), emailVerifiedAt: new Date() } });
   const a = await createDemoCompany(db, user.id);
   const b = await createSecondDemoCompany(db, user.id);
   console.log(`Seeded ${a.name} and ${b.name} for ${DEMO_EMAIL} (password: ${DEMO_PASSWORD}).`);

@@ -25,6 +25,33 @@ npm run dev
 
 Mock mode is the default and needs no Blaaiz credentials. Balances, rates, payouts and signed webhooks are all simulated.
 
+## How founders sign up
+
+Any email works: Gmail, Outlook, a company domain. There are three ways in, and all of them land on the same account when the email matches.
+
+- **Continue with Google:** one click. It uses OpenID Connect with PKCE, state and nonce, and Bursar checks the ID token's signature against Google's keys.
+  - Only Google-verified emails are accepted.
+  - An existing account with the same email gets Google linked to it.
+- **Email sign-in link:** no password. The link works once, expires in 15 minutes, and creates the account if it is new.
+  - It opens a confirm page first, so email scanners that follow links cannot use it up.
+- **Email and password:** passwords are hashed with scrypt.
+  - Sign-up sends a confirmation email, and the app shows a banner until it is confirmed.
+  - **Forgot password?** sends a 30-minute reset link. Resetting signs out every other device.
+
+Each address can trigger at most 3 emails per 15 minutes. Founders who joined with Google or a link can set a password later in **Settings, Your account**.
+
+### Setting it up
+
+- **Google:**
+  - In Google Cloud Console, create an OAuth client (type: Web application).
+  - Add the redirect URI `<APP_URL>/auth/google/callback` (locally: `http://localhost:3000/auth/google/callback`).
+  - Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+  - The button only appears when both are set.
+- **Email:** set `RESEND_API_KEY` and `EMAIL_FROM` (a sender verified with Resend).
+  - Without them, emails go to a dev inbox at `/dev/mail`.
+  - That inbox is off in production unless `ENABLE_DEV_MAIL=1`. Never enable it on a public server: it shows everyone's sign-in links.
+- Set `APP_URL` to the public address so emailed links point to the right place.
+
 ## Lifecycle
 
 Blaaiz is the only money rail. Bursar decides and calls the API, always inside the hard rules the owner sets.

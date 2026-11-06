@@ -11,13 +11,38 @@ datasource db {
 
 // A founder signs in once and can run several companies.
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  name         String
-  passwordHash String
-  createdAt    DateTime  @default(now())
-  companies    Company[]
-  sessions     Session[]
+  id              String    @id @default(cuid())
+  email           String    @unique
+  name            String
+  passwordHash    String?   // null for founders who only use Google or email links
+  emailVerifiedAt DateTime?
+  googleSub       String?   @unique // Google account id, set on first Google sign-in
+  createdAt       DateTime  @default(now())
+  companies       Company[]
+  sessions        Session[]
+}
+
+// One-time links sent by email. Only the SHA-256 of the token is stored.
+model AuthToken {
+  id        String    @id // sha256 of the token
+  kind      String    // LOGIN | RESET | VERIFY
+  email     String
+  userId    String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email, kind, createdAt])
+}
+
+// Dev and test inbox: emails land here when no email provider is configured.
+model DevEmail {
+  id      String   @id @default(cuid())
+  to      String
+  subject String
+  text    String
+  link    String?
+  sentAt  DateTime @default(now())
 }
 
 model Session {
