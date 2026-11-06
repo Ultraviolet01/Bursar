@@ -2,10 +2,12 @@
 // so the web app and the worker see the same balances.
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
-import { bn, type Currency, swapCostFor } from "../lib/money";
+import { bn, CURRENCIES, type Currency, crossRate, type Rates, swapCostFor } from "../lib/money";
 import { signWebhook, verifyWebhookSignature } from "./signature";
 import type {
   BlaaizClient,
+  CustomerRequest,
+  VirtualAccount,
   FeeQuery,
   FeeQuote,
   PayoutRequest,
@@ -19,9 +21,9 @@ import type {
 } from "./client";
 
 export const MOCK_DEFAULTS = {
-  baseUsdNgn: 1500,
+  baseRates: { NGN: 1, USD: 1500, EUR: 1620, GBP: 1890 } as Rates, // NGN per unit
   swapFeeBps: 50, // 0.5%
-  payoutFee: { NGN: 5_000, USD: 100 } as Record<Currency, number>, // NGN 50, USD 1
+  payoutFee: { NGN: 5_000, USD: 100, EUR: 100, GBP: 100 } as Record<Currency, number>, // NGN 50, 1 unit otherwise
   failAccountNumber: "0000000000",
 };
 
@@ -44,11 +46,16 @@ export class MockBlaaizClient implements BlaaizClient {
     return this.opts.now?.() ?? new Date();
   }
 
-  /** NGN per USD with a slow, bounded drift so cycles see small changes. */
-  currentUsdNgn(): number {
+  /** NGN per unit with a slow, bounded drift per currency so cycles see small changes. */
+  currentRates(): Rates {
     const t = this.now().getTime() / 3_600_000; // hours
-    const drift = 0.006 * Math.sin(t / 5) + 0.002 * Math.sin(t * 1.7);
-    return Math.round(MOCK_DEFAULTS.baseUsdNgn * (1 + drift) * 100) / 100;
+    const out = { ...MOCK_DEFAULTS.baseRates };
+    CURRENCIES.forEach((c, i) => {
+      if (c === "NGN") return;
+      const drift = 0.006 * Math.sin(t / 5 + i) + 0.002 * Math.sin(t * 1.7 + i * 2);
+      out[c] = Math.round(MOCK_DEFAULTS.baseRates[c] * (1 + drift) * 100) / 100;
+    });
+    return out;
   }
 
   async listWallets(): Promise<Wallet[]> {
@@ -57,25 +64,22 @@ export class MockBlaaizClient implements BlaaizClient {
   }
 
   async listRates(): Promise<Rate[]> {
-    const r = this.currentUsdNgn();
+    const r = this.currentRates();
     const fetchedAt = this.now();
-    return [
-      { from: "USD", to: "NGN", rate: r, fetchedAt },
-      { from: "NGN", to: "USD", rate: 1 / r, fetchedAt },
-    ];
+    return CURRENCIES.filter((c) => c !== "NGN").map((c) => ({ from: c, to: "NGN" as Currency, rate: r[c], fetchedAt }));
   }
 
   async getFees(q: FeeQuery): Promise<FeeQuote> {
-    const r = this.currentUsdNgn();
+    const r = this.currentRates();
     if (q.kind === "swap") {
       const toAmount = q.toAmount ?? 0;
       const fromAmount = swapCostFor(toAmount, q.fromCurrency, q.toCurrency, r, MOCK_DEFAULTS.swapFeeBps);
       const fee = fromAmount - swapCostFor(toAmount, q.fromCurrency, q.toCurrency, r, 0);
-      return { fee, total: fromAmount, rate: r, toAmount, fromAmount };
+      return { fee, total: fromAmount, rate: crossRate(q.fromCurrency, q.toCurrency, r), toAmount, fromAmount };
     }
     const amount = q.toAmount ?? q.fromAmount ?? 0;
     const fee = MOCK_DEFAULTS.payoutFee[q.fromCurrency];
-    return { fee, total: amount + fee, rate: q.fromCurrency === q.toCurrency ? null : r, toAmount: amount, fromAmount: amount + fee };
+    return { fee, total: amount + fee, rate: q.fromCurrency === q.toCurrency ? null : crossRate(q.fromCurrency, q.toCurrency, r), toAmount: amount, fromAmount: amount + fee };
   }
 
   async swap(req: SwapRequest): Promise<SwapResult> {
@@ -83,7 +87,7 @@ export class MockBlaaizClient implements BlaaizClient {
       this.db.mockWallet.findFirstOrThrow({ where: { id: req.fromWalletId, companyId: this.opts.companyId } }),
       this.db.mockWallet.findFirstOrThrow({ where: { id: req.toWalletId, companyId: this.opts.companyId } }),
     ]);
-    const r = this.currentUsdNgn();
+    const r = this.currentRates();
     const fc = from.currency as Currency;
     const tc = to.currency as Currency;
     let toAmount: number;
@@ -94,7 +98,7 @@ export class MockBlaaizClient implements BlaaizClient {
     } else {
       fromAmount = req.amount;
       const net = req.amount / (1 + MOCK_DEFAULTS.swapFeeBps / 10_000);
-      toAmount = Math.floor(fc === "NGN" ? net / r : net * r);
+      toAmount = Math.floor(net / crossRate(fc, tc, r));
     }
     if (bn(from.balance) < fromAmount) throw new Error(`Mock Blaaiz: insufficient ${fc} balance for swap`);
     const id = `mock_swap_${randomUUID().slice(0, 12)}`;
@@ -110,13 +114,13 @@ export class MockBlaaizClient implements BlaaizClient {
           currency: fc,
           amount: BigInt(fromAmount),
           fee: BigInt(fromAmount - swapCostFor(toAmount, fc, tc, r, 0)),
-          rate: r,
+          rate: crossRate(fc, tc, r),
           walletId: from.id,
           payload: JSON.stringify({ ...req, toAmount, fromAmount, to_currency: tc }),
         },
       }),
     ]);
-    return { transactionId: id, status: "SUCCESSFUL", toAmount, fromAmount, rate: r };
+    return { transactionId: id, status: "SUCCESSFUL", toAmount, fromAmount, rate: crossRate(fc, tc, r) };
   }
 
   async payout(req: PayoutRequest): Promise<PayoutResult> {
@@ -210,6 +214,25 @@ export class MockBlaaizClient implements BlaaizClient {
 
   verifyWebhook(rawBody: string, signature: string, timestamp: string): boolean {
     return verifyWebhookSignature(rawBody, signature, timestamp, this.opts.webhookSecret);
+  }
+
+  async createCustomer(req: CustomerRequest): Promise<{ id: string }> {
+    if (!req.email || !req.idNumber) throw new Error("Mock Blaaiz: email and ID number are required to create a customer");
+    return { id: `mock_cus_${randomUUID().slice(0, 10)}` };
+  }
+
+  async createVirtualAccount(walletId: string, accountName?: string): Promise<VirtualAccount> {
+    const w = await this.db.mockWallet.findFirstOrThrow({ where: { id: walletId, companyId: this.opts.companyId } });
+    // Deterministic 10-digit number per wallet, so it looks stable across reloads.
+    const digits = [...w.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 9_000_000_000, 7) + 1_000_000_000;
+    return { id: `mock_vba_${w.id}`, accountNumber: String(digits), accountName: accountName ?? "Bursar business wallet", bankName: "Blaaiz Mock Bank" };
+  }
+
+  /** Mock only: adds a wallet (live wallets are created in the Blaaiz dashboard). */
+  async createWallet(currency: Currency): Promise<string> {
+    const id = `mock_wallet_${currency.toLowerCase()}_${randomUUID().slice(0, 10)}`;
+    await this.db.mockWallet.create({ data: { id, companyId: this.opts.companyId, currency, balance: 0n } });
+    return id;
   }
 
   /** Simulates a dev deposit (collection.completed). Mock only. */

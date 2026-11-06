@@ -35,6 +35,7 @@ model Company {
   owner            User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   name             String
   baseCurrency     String  @default("NGN")
+  currencies       String  @default("NGN,USD") // wallets this company runs, comma list
   blaaizCustomerId String?
   // Live-mode credentials, encrypted with BURSAR_SECRET_KEY (AES-256-GCM). Never plain text.
   blaaizClientId        String?
@@ -51,6 +52,10 @@ model Wallet {
   currency       String
   label          String
   balance        BigInt
+  // Virtual bank account used to fund this wallet by bank transfer (NGN).
+  vaAccountNumber String?
+  vaAccountName   String?
+  vaBankName      String?
   updatedAt      DateTime @updatedAt
 
   @@unique([companyId, currency])
@@ -86,6 +91,12 @@ model Payee {
   accountName   String?
   phone         String?
   operatorId    String?
+  // Blaaiz customer record (setup). Blaaiz requires KYC fields to create one.
+  email            String?
+  country          String?
+  idType           String?
+  idNumber         String?
+  blaaizCustomerId String?
   allowlisted   Boolean  @default(false)
   critical      Boolean  @default(false)
   verifiedAt    DateTime?
@@ -177,6 +188,22 @@ model Execution {
   updatedAt           DateTime @updatedAt
 
   @@index([idempotencyKey])
+}
+
+// Local ledger: every money movement Bursar knows about, signed, per wallet.
+model LedgerEntry {
+  id                  String   @id @default(cuid())
+  companyId           String
+  currency            String
+  kind                String   // PAYOUT | FEE | SWAP_OUT | SWAP_IN | DEPOSIT | REFUND
+  amount              BigInt   // signed minor units: negative leaves the wallet
+  memo                String
+  actionId            String?
+  paymentId           String?
+  blaaizTransactionId String?
+  at                  DateTime @default(now())
+
+  @@index([companyId, currency, at])
 }
 
 model WebhookEvent {

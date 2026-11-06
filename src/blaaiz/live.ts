@@ -2,9 +2,11 @@
 // shapes throw a BlaaizShapeError that the cycle logs instead of crashing.
 import { Blaaiz } from "blaaiz-nodejs-sdk";
 import { z } from "zod";
-import { toMinor, type Currency } from "../lib/money";
+import { CURRENCIES, isCurrency, toMinor, type Currency } from "../lib/money";
 import type {
   BlaaizClient,
+  CustomerRequest,
+  VirtualAccount,
   FeeQuery,
   FeeQuote,
   PayoutRequest,
@@ -89,25 +91,28 @@ export class LiveBlaaizClient implements BlaaizClient {
     const rows = parse("wallets.list", z.array(WalletSchema), unwrap(await this.sdk.wallets.list()));
     return rows
       .map((w) => ({ id: w.id, currency: currencyCode(w.currency) as Currency, balance: w.balance }))
-      .filter((w) => w.currency === "NGN" || w.currency === "USD");
+      .filter((w) => isCurrency(w.currency));
   }
 
+  /** Returns NGN per unit for every supported currency Blaaiz quotes. Path and shape are not published. */
   async listRates(): Promise<Rate[]> {
-    // Path and shape are not published; accept a list of { from, to, rate }-like rows.
-    const raw = unwrap(await this.sdk.rates.list({ search_term: "USD" }));
+    const raw = unwrap(await this.sdk.rates.list({}));
     const rows = Array.isArray(raw) ? raw : [];
-    const out: Rate[] = [];
+    const found: Rate[] = [];
     for (const r of rows as Record<string, unknown>[]) {
       const from = currencyCode(r.from_currency ?? r.from ?? r.base_currency);
       const to = currencyCode(r.to_currency ?? r.to ?? r.quote_currency);
       const rate = Number(r.rate ?? r.exchange_rate ?? r.value);
-      if (from && to && Number.isFinite(rate)) out.push({ from: from as Currency, to: to as Currency, rate, fetchedAt: new Date() });
+      if (isCurrency(from) && isCurrency(to) && Number.isFinite(rate) && rate > 0) found.push({ from, to, rate, fetchedAt: new Date() });
     }
-    if (!out.some((r) => r.from === "USD" && r.to === "NGN")) {
-      const inverse = out.find((r) => r.from === "NGN" && r.to === "USD");
-      if (inverse) out.push({ from: "USD", to: "NGN", rate: 1 / inverse.rate, fetchedAt: inverse.fetchedAt });
-      else throw new BlaaizShapeError("rates.list", "no USD/NGN rate found");
+    const out: Rate[] = [];
+    for (const c of CURRENCIES.filter((x) => x !== "NGN")) {
+      const direct = found.find((r) => r.from === c && r.to === "NGN");
+      const inverse = found.find((r) => r.from === "NGN" && r.to === c);
+      if (direct) out.push(direct);
+      else if (inverse) out.push({ from: c, to: "NGN", rate: 1 / inverse.rate, fetchedAt: inverse.fetchedAt });
     }
+    if (!out.length) throw new BlaaizShapeError("rates.list", "no NGN rates found");
     return out;
   }
 
@@ -176,6 +181,33 @@ export class LiveBlaaizClient implements BlaaizClient {
 
   async getTransaction(id: string): Promise<Transaction> {
     return mapTx(parse("transactions.get", TxSchema, unwrap(await this.sdk.transactions.get(id))));
+  }
+
+  async createCustomer(req: CustomerRequest): Promise<{ id: string }> {
+    const raw = unwrap(
+      await this.sdk.customers.create({
+        first_name: req.firstName,
+        last_name: req.lastName,
+        business_name: req.businessName ?? undefined,
+        type: req.type,
+        email: req.email,
+        country: req.country,
+        id_type: req.idType,
+        id_number: req.idNumber,
+      }),
+    ) as Record<string, unknown>;
+    const id = raw?.id ?? (raw?.data as Record<string, unknown> | undefined)?.id;
+    if (!id) throw new BlaaizShapeError("customers.create", raw);
+    return { id: String(id) };
+  }
+
+  async createVirtualAccount(walletId: string, accountName?: string): Promise<VirtualAccount> {
+    const v = parse(
+      "virtualBankAccounts.create",
+      z.object({ id: z.union([z.string(), z.number()]).transform(String), account_number: z.string(), account_name: z.string(), bank_name: z.string() }).passthrough(),
+      unwrap(await this.sdk.virtualBankAccounts.create({ wallet_id: walletId, account_name: accountName })),
+    );
+    return { id: v.id, accountNumber: v.account_number, accountName: v.account_name, bankName: v.bank_name };
   }
 
   verifyWebhook(rawBody: string, signature: string, timestamp: string): boolean {

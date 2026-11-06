@@ -1,55 +1,77 @@
 // Read models for the dashboard. Server-only.
 import { db } from "./db";
 import { env } from "./env";
-import { bn, CURRENCIES, type Currency, toNgn } from "./money";
+import { bn, CURRENCIES, type Currency, type Rates, toNgn } from "./money";
 import { isoDate } from "./dates";
 import { loadPolicy, toPaymentInfo } from "./repo";
 import { forecast, type CurrencyForecast } from "../engine/forecast";
 import { MOCK_DEFAULTS } from "../blaaiz/mock";
 
+/** Latest rate per currency (NGN per unit) and its 7-day average, from snapshots. */
+export async function getRates(): Promise<{ rates: Rates; avg7d: Rates }> {
+  const since = new Date(Date.now() - 7 * 86_400_000);
+  const rows = await db.rateSnapshot.findMany({ where: { fetchedAt: { gte: since } }, orderBy: { fetchedAt: "desc" } });
+  const rates = { ...MOCK_DEFAULTS.baseRates };
+  const avg7d = { ...MOCK_DEFAULTS.baseRates };
+  for (const c of CURRENCIES) {
+    if (c === "NGN") continue;
+    const mine = rows.filter((r) => r.pair === `${c}NGN`);
+    if (mine.length) {
+      rates[c] = mine[0].rate;
+      avg7d[c] = mine.reduce((s, r) => s + r.rate, 0) / mine.length;
+    }
+  }
+  return { rates, avg7d };
+}
+
 export async function getShell(companyId: string) {
-  const [company, pending, lastCycle, lastRate] = await Promise.all([
+  const [company, pending, lastCycle] = await Promise.all([
     db.company.findUnique({ where: { id: companyId } }),
     db.action.count({ where: { companyId, status: "PENDING" } }),
     db.cycle.findFirst({ where: { companyId }, orderBy: { startedAt: "desc" } }),
-    db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
   ]);
-  return { company, pending, lastCycle, mode: env.mode, usdNgn: lastRate?.rate ?? MOCK_DEFAULTS.baseUsdNgn };
+  return { company, pending, lastCycle, mode: env.mode };
 }
 
 export async function getTreasury(companyId: string) {
   const today = isoDate();
   const policy = await loadPolicy(db, companyId);
-  const [wallets, payments, rate] = await Promise.all([
+  const [wallets, payments, { rates, avg7d }] = await Promise.all([
     db.wallet.findMany({ where: { companyId }, orderBy: { currency: "asc" } }),
     db.scheduledPayment.findMany({
       where: { companyId, status: { in: ["SCHEDULED", "DEFERRED", "PROPOSED"] } },
       include: { payee: true },
       orderBy: [{ dueDate: "asc" }, { priority: "asc" }],
     }),
-    db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
+    getRates(),
   ]);
-  const usdNgn = rate?.rate ?? MOCK_DEFAULTS.baseUsdNgn;
   const fee = MOCK_DEFAULTS.payoutFee; // estimate for the forecast view; cycles use live quotes
   const outflows = payments.map((p) => ({
     id: p.id,
     label: p.payee.name,
     currency: p.currency as Currency,
-    amount: bn(p.amount) + fee[p.currency as Currency],
+    amount: bn(p.amount) + (fee[p.currency as Currency] ?? 0),
     dueDate: p.dueDate,
   }));
-  const walletStates = wallets.map((w) => ({ currency: w.currency as Currency, blaaizWalletId: w.blaaizWalletId, balance: bn(w.balance) }));
-  const fc = forecast({ today, horizonDays: policy.horizonDays, wallets: walletStates, policy, outflows });
+  // Wallets in the order NGN, USD, EUR, GBP.
+  const currencies = CURRENCIES.filter((c) => wallets.some((w) => w.currency === c));
+  const walletStates = currencies.map((c) => {
+    const w = wallets.find((x) => x.currency === c)!;
+    return { currency: c, blaaizWalletId: w.blaaizWalletId, balance: bn(w.balance) };
+  });
+  const partial = forecast({ today, horizonDays: policy.horizonDays, wallets: walletStates, policy, outflows });
+  const fc = partial as Record<Currency, CurrencyForecast>;
 
   // Combined NGN-equivalent series for the overview chart.
-  const totalSeries = fc.NGN.series.map((pt, i) => ({
-    date: pt.date,
-    value: CURRENCIES.reduce((s, c) => s + toNgn(fc[c].series[i].balance, c, usdNgn), 0),
+  const days = currencies.length ? fc[currencies[0]].series.length : 0;
+  const totalSeries = Array.from({ length: days }, (_, i) => ({
+    date: fc[currencies[0]].series[i].date,
+    value: currencies.reduce((s, c) => s + toNgn(fc[c].series[i].balance, c, rates), 0),
   }));
-  const totalNgn = CURRENCIES.reduce((s, c) => s + toNgn(fc[c].balance, c, usdNgn), 0);
-  const bufferNgn = CURRENCIES.reduce((s, c) => s + toNgn(policy.buffer[c], c, usdNgn), 0);
+  const totalNgn = currencies.reduce((s, c) => s + toNgn(fc[c].balance, c, rates), 0);
+  const bufferNgn = currencies.reduce((s, c) => s + toNgn(policy.buffer[c] ?? 0, c, rates), 0);
 
-  return { today, policy, wallets, payments: payments.map((p) => ({ ...toPaymentInfo(p), row: p })), fc, totalSeries, totalNgn, bufferNgn, usdNgn };
+  return { today, policy, wallets, currencies, payments: payments.map((p) => ({ ...toPaymentInfo(p), row: p })), fc, totalSeries, totalNgn, bufferNgn, rates, avg7d };
 }
 
 export function walletHealth(f: CurrencyForecast): { label: string; tone: "good" | "amber" | "bad" | "teal" } {

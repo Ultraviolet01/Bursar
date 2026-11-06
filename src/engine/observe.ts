@@ -2,7 +2,7 @@
 import type { PrismaClient } from "@prisma/client";
 import type { BlaaizClient } from "../blaaiz/client";
 import { addDays, isoDate } from "../lib/dates";
-import { bn, type Currency, toNgn } from "../lib/money";
+import { bn, CURRENCIES, type Currency, type Rates, toNgn } from "../lib/money";
 import { getCompany, loadPolicy, toPaymentInfo } from "../lib/repo";
 import type { MarketInfo, PaymentInfo, PayoutQuote, PolicyConfig, WalletState } from "./types";
 
@@ -30,27 +30,36 @@ export async function syncWallets(db: PrismaClient, client: BlaaizClient, compan
   return wallets.map((w) => ({ currency: w.currency, blaaizWalletId: w.id, balance: w.balance }));
 }
 
+/** Rates for every supported currency as NGN per unit, with 7-day averages. Market data is shared by all companies. */
 export async function loadMarket(db: PrismaClient, client: BlaaizClient, record = true): Promise<MarketInfo> {
-  const rates = await client.listRates();
-  const usdNgn = rates.find((r) => r.from === "USD" && r.to === "NGN")!.rate;
-  if (record) await db.rateSnapshot.create({ data: { pair: "USDNGN", rate: usdNgn } });
+  const quoted = await client.listRates();
+  const rates = { NGN: 1 } as Rates;
+  for (const c of CURRENCIES) if (c !== "NGN") rates[c] = quoted.find((r) => r.from === c && r.to === "NGN")?.rate ?? NaN;
+  if (record) {
+    await db.rateSnapshot.createMany({ data: CURRENCIES.filter((c) => c !== "NGN" && Number.isFinite(rates[c])).map((c) => ({ pair: `${c}NGN`, rate: rates[c] })) });
+  }
   const since = new Date(Date.now() - 7 * 86_400_000);
-  const hist = await db.rateSnapshot.findMany({ where: { pair: "USDNGN", fetchedAt: { gte: since } }, select: { rate: true } });
-  const usdNgnAvg7d = hist.length ? hist.reduce((s, r) => s + r.rate, 0) / hist.length : usdNgn;
+  const hist = await db.rateSnapshot.findMany({ where: { fetchedAt: { gte: since } }, select: { pair: true, rate: true } });
+  const avg7d = { NGN: 1 } as Rates;
+  for (const c of CURRENCIES) {
+    if (c === "NGN") continue;
+    const rows = hist.filter((h) => h.pair === `${c}NGN`);
+    avg7d[c] = rows.length ? rows.reduce((s, r) => s + r.rate, 0) / rows.length : rates[c];
+  }
   // Swap fee as basis points, read from a fee quote.
   const q = await client.getFees({ kind: "swap", fromCurrency: "NGN", toCurrency: "USD", toAmount: 100_00 });
   const net = q.total - q.fee;
   const swapFeeBps = net > 0 ? Math.round((q.fee / net) * 10_000) : 0;
-  return { usdNgn, usdNgnAvg7d, swapFeeBps };
+  return { rates, avg7d, swapFeeBps };
 }
 
-export async function todaySpentNgn(db: PrismaClient, companyId: string, usdNgn: number): Promise<number> {
+export async function todaySpentNgn(db: PrismaClient, companyId: string, rates: Rates): Promise<number> {
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const execs = await db.execution.findMany({ where: { companyId, kind: "PAYOUT", createdAt: { gte: start }, status: { not: "FAILED" } } });
   return execs.reduce((s, e) => {
     const r = JSON.parse(e.request) as { fromCurrency: Currency; toAmount: number; _fee?: number };
-    return s + toNgn(r.toAmount + (r._fee ?? 0), r.fromCurrency, usdNgn);
+    return s + toNgn(r.toAmount + (r._fee ?? 0), r.fromCurrency, rates);
   }, 0);
 }
 
@@ -63,7 +72,9 @@ export async function observe(db: PrismaClient, client: BlaaizClient, companyId:
     where: { companyId, status: { in: ["SCHEDULED", "DEFERRED"] }, dueDate: { lte: horizonEnd } },
     include: { payee: true },
   });
-  const payments = rows.map(toPaymentInfo);
+  // Only bills in a currency this company holds a wallet for.
+  const held = new Set(wallets.map((w) => w.currency));
+  const payments = rows.map(toPaymentInfo).filter((p) => held.has(p.currency));
   const quotes: Record<string, PayoutQuote> = {};
   for (const p of payments) {
     const q = await client.getFees({ kind: "payout", fromCurrency: p.currency, toCurrency: p.currency, toAmount: p.amount });
@@ -77,7 +88,7 @@ export async function observe(db: PrismaClient, client: BlaaizClient, companyId:
     market,
     payments,
     quotes,
-    todaySpentNgn: await todaySpentNgn(db, companyId, market.usdNgn),
+    todaySpentNgn: await todaySpentNgn(db, companyId, market.rates),
   };
 }
 

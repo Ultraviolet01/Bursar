@@ -87,6 +87,24 @@ export interface Transaction {
   date: string;
 }
 
+export interface CustomerRequest {
+  firstName: string;
+  lastName: string;
+  businessName?: string | null;
+  type: "individual" | "business";
+  email: string;
+  country: string; // ISO code, e.g. NG
+  idType: "drivers_license" | "passport" | "id_card" | "resident_permit" | "certificate_of_incorporation";
+  idNumber: string;
+}
+
+export interface VirtualAccount {
+  id: string;
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+}
+
 export interface BlaaizClient {
   readonly mode: BlaaizMode;
   listWallets(): Promise<Wallet[]>;
@@ -97,4 +115,8 @@ export interface BlaaizClient {
   listTransactions(q: TxQuery): Promise<Transaction[]>;
   getTransaction(id: string): Promise<Transaction>;
   verifyWebhook(rawBody: string, signature: string, timestamp: string): boolean;
+  /** Setup: register a payee (employee, vendor) as a Blaaiz customer. */
+  createCustomer(req: CustomerRequest): Promise<{ id: string }>;
+  /** Setup: a bank account that funds the given wallet by transfer (NGN). */
+  createVirtualAccount(walletId: string, accountName?: string): Promise<VirtualAccount>;
 }

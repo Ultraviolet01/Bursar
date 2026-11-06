@@ -19,7 +19,7 @@ npm run dev
 - Sign in: http://localhost:3000/signin with `founder@bursar.demo` / `bursar-demo` (demo seed only).
   - This founder runs two companies: Kaduna Freight Ltd and Ilorin Agro Foods.
 - Or create your own account at `/signup`. Onboarding asks for your first company.
-- Optional scheduler (hourly by default): `npm run worker`
+- Optional scheduler (every 10 minutes by default): `npm run worker`
 - Run one cycle for every company from the terminal: `npm run cycle`
 - Reset the demo at any time: `npm run db:seed`
 
@@ -27,53 +27,101 @@ Mock mode is the default and needs no Blaaiz credentials. Balances, rates, payou
 
 ## Lifecycle
 
-### A cycle
+Blaaiz is the only money rail. Bursar decides and calls the API, always inside the hard rules the owner sets.
 
-A cycle runs per company:
-- On a schedule (`npm run worker`).
-- When the owner presses **Run cycle**.
-- When an external scheduler calls `POST /api/cycle` with `Authorization: Bearer $CRON_SECRET`.
+### 1. Setup (one-time)
+
+The Overview shows these five steps as a checklist until each is done.
+
+1. **Create currency wallets.** Choose NGN (always), USD, EUR and GBP when you add a company, or later with **Add wallet**.
+   - In live mode, wallets are created in the Blaaiz dashboard and Bursar uses the ones Blaaiz returns.
+   - The Blaaiz development sandbox only settles NGN and USD.
+2. **Register payees with Blaaiz.** Employees and key vendors become Blaaiz customers (`customers.create`).
+   - Blaaiz needs an email, country, ID type and ID number for each one.
+   - Allowlisting a payee registers them automatically once those details are filled in.
+3. **Fund NGN by bank transfer.** **Create funding account** gives the NGN wallet its own virtual bank account (`virtualBankAccounts.create`).
+   - A deposit webhook updates balances and starts a cycle.
+4. **Swap into your other currencies.** **Convert** on Wallets swaps between your own wallets.
+   - The rate and fee are previewed first, and every rule is still checked.
+5. **Set your hard rules:**
+   - A buffer per wallet.
+   - Per-payment caps per currency.
+   - A daily cap.
+   - A swap cap.
+   - Allowed currency pairs.
+   - A rate band.
+   - The defer window.
+   - Auto-execute.
+
+### 2. Continuous loop (every run)
+
+| Stage | What happens |
+|-------|--------------|
+| **Observe** | Pull every wallet balance and the NGN rate for each currency (plus a 7-day average). Load bills inside the horizon (salaries, domains, SaaS, vendors) and a fee quote for each. |
+| **Forecast** | Projected balance per currency after upcoming bills. Flags the first day each wallet would fall below its buffer. |
+| **Decide** | In priority order. 1) Pay due bills from the currency already held, payroll first. 2) **Rebalance**: one swap per short currency from the wallet with the most surplus above its buffer. 3) Pay the bills that swap funded. 4) Defer non-critical bills when cash is tight or the rate is poor. 5) Escalate anything outside the rules. Then propose top-ups for wallets forecast to dip below their buffer. |
+| **Act** | Preview the fee and rate with Blaaiz. Re-check every rule with live balances. Then `POST /swap` or `POST /payout` if allowed; otherwise create a proposal for the owner. |
+| **Reconcile** | Payout webhooks and transaction status mark bills paid or failed. Every movement goes into the local ledger: payouts, fees, swaps in and out, deposits, refunds. |
+| **Learn** | Log outcomes: approvals against rejections by reason, the rates swaps got against the 7-day average, and what happened to deferred bills. Repeated patterns become rule suggestions in Approvals. |
+
+### 3. Decision rules
+
+- **Pay** when:
+  - The bill is due.
+  - The payee is allowlisted.
+  - The amount is within the caps.
+  - The wallet stays above its buffer afterwards.
+- **Swap (rebalance)** when a currency needed now is short and another wallet has surplus above its buffer.
+  - The swap must use an allowed pair, within the rate band.
+  - The swap brings in enough to refill the buffer too.
+  - It is planned even when it is over the swap cap. Policy then turns it into a proposal, and the bills it funds are held until you approve.
+- **Defer** when the bill is not critical and cash is tight or the rate is poor. After the max defer window it escalates instead.
+- **Escalate** for new payees, amounts over a cap, critical shortfalls, failed payouts, or any rule violation.
+
+### Rebalancing
+
+Rebalancing moves money between this company's own wallets so no currency runs dry while another sits idle. It is a `POST /swap` between two wallets of the same business.
+
+- Only between this business's own wallets. A policy check confirms both wallets belong to the company.
+- Never takes the source wallet below its buffer, and refills the target's buffer.
+- Covers due critical bills (payroll first) before any opportunistic top-up.
+- Previews the rate and fee before swapping, and writes every swap to the ledger.
+- One rebalance per currency per cycle. While one waits for you, the bills it would fund are held, not re-proposed.
+- If you reject a rebalance, it is not proposed again that day. The critical bills then come to you instead.
+
+### 4. What the owner sees
+
+- Current balances per currency, with each wallet's buffer, runway and ledger.
+- Upcoming payments and the 14-day forecast.
+- Proposals: payments, rebalances, top-ups, and rule suggestions from Learn.
+- A history of executed actions, with the rule each one checked and its Blaaiz reference.
+- An approve button for anything outside the hard limits.
+
+### 5. Run cadence
+
+- Every 10 minutes by default (`CYCLE_CRON`, any value from 5 to 15 minutes works), or on demand with **Run cycle**.
+- A cycle also runs straight away when:
+  - A new bill is added.
+  - A deposit webhook arrives.
+  - You approve a swap (so the bills it funded get paid).
+  - You convert currencies.
+
+### A payment, end to end
 
 ```
-Observe  ->  Forecast  ->  Decide  ->  Policy check  ->  Act  ->  Reconcile
-balances     14 days per    PAY / SWAP_THEN_PAY /   pass + auto-execute -> executor -> Blaaiz
-rates        currency       DEFER / ESCALATE /      otherwise           -> proposal (owner)
-fee quotes                  top-up SWAP
+SCHEDULED --cycle--> PAY (from own currency or after a rebalance) --> EXECUTING --payout.completed--> PAID --> next occurrence (if recurring)
+    |                     '-- rebalance waiting for you --> HOLD --you approve the swap--> follow-up cycle pays it
+    |--cycle--> DEFERRED --next cycle--> re-decided (escalates after the max defer window)
+    '--cycle--> PROPOSED --you approve--> preview + live policy check --> EXECUTING --> PAID
+                     '----you reject----> CANCELLED (recurring schedule continues)
+payout.failed --> funds refunded (ledger) --> PROPOSED (PAYOUT_FAILED)
 ```
-
-1. **Observe**: syncs wallet balances, the USD/NGN rate and its 7-day average, and a fee quote for every unpaid payment in the horizon.
-2. **Forecast**: projected balance per currency. Flags the first day a wallet would drop below its buffer.
-3. **Decide**: walks payments due today or overdue in priority order (payroll, critical vendors, SaaS and domains, others) and reserves funds as it goes.
-   - **PAY**: the payee is allowlisted, the payment is under the caps, and the wallet stays above its buffer.
-   - **SWAP_THEN_PAY**: the wallet is short. Another wallet can cover the exact shortfall, the pair is allowed, the rate is within band, and the swap is under the swap cap.
-   - **DEFER**: the wallet is short, nothing can cover it, and the payment is not critical. After the max defer window it escalates instead.
-   - **ESCALATE**: new payee, over a cap, short on a critical payment, or a payout that failed.
-   - **SWAP** (top-up): a future bill would push a wallet below its buffer.
-4. **Policy check and Act**: every action goes through the policy engine.
-   - If every check passes and auto-execute is on, the executor calls Blaaiz.
-   - Otherwise the action becomes a proposal in **Approvals**.
-   - The executor re-checks every rule with live balances right before it calls Blaaiz.
-5. **Reconcile**: Blaaiz webhooks (`payout.processing`, `payout.completed`, `payout.failed`, deposits) update payments. Polling `getTransaction` is the fallback.
-
-### A payment
-
-```
-SCHEDULED --cycle--> auto PAY ----------------> EXECUTING --payout.completed--> PAID --> next occurrence SCHEDULED (if recurring)
-    |                                               |
-    |--cycle--> DEFERRED --next cycle--> (re-decided; escalates after max defer window)
-    |                                               '--payout.failed--> PROPOSED (PAYOUT_FAILED), funds returned
-    '--cycle--> PROPOSED --owner approves--> live policy re-check --> EXECUTING --> PAID
-                     '----owner rejects----> CANCELLED (recurring schedule continues)
-```
-
-- One payout per occurrence, keyed by `merchant_reference = bursar-{paymentId}-{dueDate}`. Running a cycle twice never pays twice.
-- **Pause** (the kill switch) is per company. Cycles still propose, but nothing executes, not even approvals.
 
 ### An account
 
 ```
-Sign up -> onboarding (first company) -> dashboard
-Sign in -> last active company        -> switch or add companies from the sidebar -> Sign out
+Sign up -> add your first company (blurred dashboard behind) -> dashboard with the setup checklist
+Sign in -> last active company -> switch or add companies from the sidebar -> Sign out
 ```
 
 ## What the dashboard looks like
@@ -116,11 +164,13 @@ Sign in -> last active company        -> switch or add companies from the sideba
 
 ## Testing
 
-- `npm test` (Vitest, 46 tests):
+- `npm test` (Vitest, 59 tests):
   - Every reason code.
   - Policy checks.
   - Idempotency, pause, failed payouts and webhook signatures.
   - Isolation between companies.
+  - Rebalance order, held bills, follow-up cycles and EUR rebalancing.
+  - Ledger, fee previews, the Learn stage and deposit-triggered cycles.
   - Password and secret encryption.
 - `npm run e2e` drives a real browser through the whole lifecycle, plus the axe scan. Start the app first (`npm run build && npm start`). It re-seeds the database.
   - Sign in, run a cycle, webhooks settle payouts, approve the escalation.

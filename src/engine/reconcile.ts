@@ -6,6 +6,8 @@ import { addDays, addMonths } from "../lib/dates";
 import { bn, formatMoney } from "../lib/money";
 import { audit, merchantReference, nextActionNumber } from "../lib/repo";
 import type { ProposedAction } from "./types";
+import { writeLedger } from "./execute";
+import type { Currency } from "../lib/money";
 
 export interface PayoutUpdate {
   transactionId?: string | null;
@@ -68,8 +70,12 @@ export async function applyPayoutUpdate(db: PrismaClient, companyId: string, u: 
     return "Paid";
   }
 
-  // FAILED: release the payment and escalate.
+  // FAILED: funds come back, release the payment and escalate.
   await db.execution.update({ where: { id: exec.id }, data: { status: "FAILED" } });
+  const req = JSON.parse(exec.request) as { fromCurrency: Currency; toAmount: number; _fee?: number };
+  await writeLedger(db, companyId, exec.actionId, [
+    { currency: req.fromCurrency, kind: "REFUND", amount: req.toAmount + (req._fee ?? 0), memo: `Payout failed, returned${payment ? ` (${payment.payee.name})` : ""}`, paymentId: payment?.id, blaaizTransactionId: exec.blaaizTransactionId },
+  ]);
   await db.action.update({ where: { id: exec.actionId }, data: { status: "FAILED" } });
   if (payment) {
     await db.scheduledPayment.update({ where: { id: payment.id }, data: { status: "PROPOSED" } });

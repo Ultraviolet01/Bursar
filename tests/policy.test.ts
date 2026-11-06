@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluate, type PolicyContext } from "../src/engine/policy";
 import type { ProposedAction } from "../src/engine/types";
-import { M, policy } from "./fixtures";
+import { M, market, policy } from "./fixtures";
 
 const ctx = (over: Partial<PolicyContext> = {}): PolicyContext => ({
   policy: policy(),
@@ -10,7 +10,7 @@ const ctx = (over: Partial<PolicyContext> = {}): PolicyContext => ({
     { currency: "NGN", blaaizWalletId: "n", balance: M(8_000_000) },
     { currency: "USD", blaaizWalletId: "u", balance: M(1_200) },
   ],
-  market: { usdNgn: 1500, usdNgnAvg7d: 1500, swapFeeBps: 50 },
+  market: market(),
   todaySpentNgn: 0,
   payee: { id: "x", name: "Ada Obi", category: "PAYROLL", currency: "NGN", allowlisted: true, critical: true },
   ...over,
@@ -48,7 +48,7 @@ describe("policy", () => {
   });
 
   it("an automated action can never breach the buffer", () => {
-    const r = evaluate(pay(7_800_000), ctx({ policy: policy({ perPaymentCap: { NGN: M(9_000_000), USD: M(1_500) }, dailyCapNgn: M(9_000_000) }) }));
+    const r = evaluate(pay(7_800_000), ctx({ policy: policy({ perPaymentCap: { NGN: M(9_000_000), USD: M(1_500), EUR: M(1_400), GBP: M(1_200) }, dailyCapNgn: M(9_000_000) }) }));
     expect(status(r, "buffer")).toBe("needs_owner");
     expect(r.autoOk).toBe(false);
   });
@@ -66,7 +66,7 @@ describe("policy", () => {
     };
     expect(evaluate(swap, ctx()).autoOk).toBe(true);
     expect(status(evaluate(swap, ctx({ policy: policy({ allowedPairs: [] }) })), "pair")).toBe("fail");
-    expect(status(evaluate(swap, ctx({ market: { usdNgn: 1600, usdNgnAvg7d: 1500, swapFeeBps: 50 } })), "rate")).toBe("needs_owner");
+    expect(status(evaluate(swap, ctx({ market: market({ USD: 1600 }, { USD: 1500 }) })), "rate")).toBe("needs_owner");
     expect(status(evaluate(swap, ctx({ policy: policy({ perSwapCapNgn: M(500_000) }) })), "swap_cap")).toBe("needs_owner");
   });
 

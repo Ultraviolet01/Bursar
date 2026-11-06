@@ -6,6 +6,8 @@ import { db } from "../lib/db";
 import { audit } from "../lib/repo";
 import { applyPayoutUpdate } from "../engine/reconcile";
 import { syncWallets } from "../engine/observe";
+import { writeLedger } from "../engine/execute";
+import { isCurrency, toMinor } from "../lib/money";
 
 const EventSchema = z
   .object({
@@ -65,8 +67,18 @@ export async function handleBlaaizWebhook(companyId: string, rawBody: string, si
     note = await applyPayoutUpdate(db, companyId, { transactionId: txId, merchantReference: ref, status: "FAILED", reason: data.reason as string | undefined });
   } else if (eventType === "collection.completed" || eventType === "virtual_account.credited") {
     await syncWallets(db, client, companyId);
+    const cur = String(data.currency ?? "");
+    const amount = Number(data.amount ?? 0);
+    if (isCurrency(cur) && amount > 0) {
+      await writeLedger(db, companyId, null, [{ currency: cur, kind: "DEPOSIT", amount: toMinor(amount.toFixed(2)), memo: `Deposit (${eventType})`, blaaizTransactionId: txId }]);
+    }
     await audit(db, companyId, "BLAAIZ", `Wallet funded (${eventType}). Balances refreshed.`, "WebhookEvent", row.id);
     note = "Wallets refreshed";
+    // New money can unblock deferred bills: run a cycle now (event-driven cadence).
+    if (amount > 0) {
+      const { triggerCycle } = await import("../engine/cycle");
+      void triggerCycle(companyId, "WEBHOOK");
+    }
   }
   await db.webhookEvent.update({ where: { id: row.id }, data: { processedAt: new Date(), note } });
   return { status: 200, body: { ok: true, message: note } };

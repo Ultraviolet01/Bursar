@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireCompany } from "@/lib/auth";
+import { getRates } from "@/lib/dashboard";
+import { outcomes } from "@/engine/learn";
 import type { Prisma } from "@prisma/client";
 import { Amount, PageHeader, Pill, StatCard } from "@/components/ui";
 import { db } from "@/lib/db";
@@ -15,6 +17,8 @@ const TABS = [
   { key: "waiting", label: "Waiting" },
   { key: "deferred", label: "Deferred" },
   { key: "swaps", label: "Swaps" },
+  { key: "held", label: "Held" },
+  { key: "learned", label: "Suggestions" },
   { key: "failed", label: "Failed or rejected" },
   { key: "log", label: "System log" },
 ] as const;
@@ -26,6 +30,8 @@ const WHERE: Record<string, Prisma.ActionWhereInput> = {
   waiting: { status: "PENDING" },
   deferred: { type: "DEFER" },
   swaps: { OR: [{ type: "SWAP" }, { type: "SWAP_THEN_PAY" }, { executions: { some: { kind: "SWAP" } } }] },
+  held: { type: "HOLD" },
+  learned: { type: "RULE_CHANGE" },
   failed: { status: { in: ["FAILED", "REJECTED"] } },
 };
 
@@ -37,22 +43,22 @@ export default async function Activity({ searchParams }: { searchParams: Promise
   const limit = Math.min(500, Number(sp.limit) || 25);
   const since = new Date(Date.now() - 30 * 86_400_000);
 
-  const [rate, recent30, total, rows, log, hooks] = await Promise.all([
-    db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
+  const [{ rates }, recent30, total, rows, log, hooks, learned] = await Promise.all([
+    getRates(),
     db.action.findMany({ where: { companyId, createdAt: { gte: since } } }),
     tab === "log" ? Promise.resolve(0) : db.action.count({ where: { companyId, ...WHERE[tab] } }),
     tab === "log" ? Promise.resolve([]) : db.action.findMany({ where: { companyId, ...WHERE[tab] }, orderBy: { number: "desc" }, take: limit, include: { executions: true } }),
     tab === "log" ? db.auditLog.findMany({ where: { companyId }, orderBy: { at: "desc" }, take: limit }) : Promise.resolve([]),
     tab === "log" ? db.webhookEvent.findMany({ where: { companyId }, orderBy: { receivedAt: "desc" }, take: 30 }) : Promise.resolve([]),
+    outcomes(db, companyId),
   ]);
-  const usdNgn = rate?.rate ?? 1500;
   const moved = recent30
     .filter((a) => a.status === "EXECUTED" && a.type !== "SWAP")
     .reduce((s, a) => {
       const p = JSON.parse(a.payload) as ProposedAction;
-      return s + toNgn(p.amount, p.currency as Currency, usdNgn);
+      return s + toNgn(p.amount, p.currency as Currency, rates);
     }, 0);
-  const money = recent30.filter((a) => a.type !== "DEFER");
+  const money = recent30.filter((a) => a.type !== "DEFER" && a.type !== "HOLD" && a.type !== "RULE_CHANGE");
   const alone = money.filter((a) => a.status === "EXECUTED" && a.decidedBy === "BURSAR").length;
   const waited = money.filter((a) => a.status === "PENDING" || a.decidedBy === "OWNER").length;
   const stillOpen = recent30.filter((a) => a.status === "PENDING").length;
@@ -85,6 +91,46 @@ export default async function Activity({ searchParams }: { searchParams: Promise
           </StatCard>
         </div>
       </div>
+
+      <section className="card mt-6 p-6" aria-labelledby="learn-title">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="learn-title" className="text-[18px] text-ink">What Bursar learned, last 30 days</h2>
+          <Link href="/app/activity?tab=learned" className="text-sm font-medium text-teal hover:underline">See suggestions</Link>
+        </div>
+        <div className="mt-4 grid gap-6 md:grid-cols-3">
+          <div>
+            <div className="text-sm text-muted">Your decisions</div>
+            <p className="mt-1 text-[15px] text-ink">
+              {learned.decided ? `You approved ${learned.approved} of ${learned.decided} proposals and rejected ${learned.rejected}.` : "No proposals decided yet."}
+            </p>
+            {learned.byReason.length > 0 && (
+              <ul className="mt-2 space-y-1 text-sm text-body">
+                {learned.byReason.slice(0, 4).map((r) => (
+                  <li key={r.reason} className="flex justify-between gap-3"><span>{reasonLabel(r.reason)}</span><span className="num text-muted">{r.approved} approved, {r.rejected} rejected</span></li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <div>
+            <div className="text-sm text-muted">Rate conditions</div>
+            <p className="mt-1 text-[15px] text-ink">
+              {learned.swaps.count === 0
+                ? "No swaps yet."
+                : learned.swaps.avgVsAveragePct === null
+                  ? `${learned.swaps.count} swaps, no rate history to compare.`
+                  : `${learned.swaps.count} swap${learned.swaps.count > 1 ? "s" : ""}, on average ${Math.abs(learned.swaps.avgVsAveragePct).toFixed(2)}% ${learned.swaps.avgVsAveragePct <= 0 ? "better" : "worse"} than the 7-day average.`}
+            </p>
+            <p className="mt-2 text-sm text-muted">Bursar skips swaps more than your rate band worse than average and defers bills that can wait.</p>
+          </div>
+          <div>
+            <div className="text-sm text-muted">Deferred bills</div>
+            <p className="mt-1 text-[15px] text-ink">
+              {learned.deferred ? `${learned.deferred} deferred, ${learned.deferredLaterPaid} since paid.` : "Nothing deferred."}
+            </p>
+            <p className="mt-2 text-sm text-muted">Repeated approvals turn into rule suggestions you can accept in Approvals.</p>
+          </div>
+        </div>
+      </section>
 
       <div className="card mt-6 overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line p-4 sm:p-5">

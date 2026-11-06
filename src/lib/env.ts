@@ -6,5 +6,5 @@ export const env = {
   oauthScope: process.env.BLAAIZ_OAUTH_SCOPE || "",
   webhookSecret: process.env.BLAAIZ_WEBHOOK_SECRET || "mock_signing_secret",
   customerId: process.env.BLAAIZ_CUSTOMER_ID || "mock_customer_kaduna",
-  cycleCron: process.env.CYCLE_CRON || "0 * * * *",
+  cycleCron: process.env.CYCLE_CRON || "*/10 * * * *",
 };

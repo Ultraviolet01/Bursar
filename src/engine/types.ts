@@ -1,4 +1,4 @@
-import type { Currency } from "../lib/money";
+import type { Currency, Rates } from "../lib/money";
 
 export type Category = "PAYROLL" | "CRITICAL_VENDOR" | "SAAS" | "DOMAIN" | "VENDOR" | "UTILITY";
 
@@ -42,9 +42,12 @@ export type ReasonCode =
   | "PAUSED"
   | "BELOW_BUFFER_FORECAST"
   | "PAYOUT_FAILED"
+  | "REBALANCE"
+  | "WAITING_FOR_REBALANCE"
+  | "LEARNED"
   | "ROUTINE_OK";
 
-export type ActionType = "PAY" | "SWAP" | "SWAP_THEN_PAY" | "DEFER" | "ESCALATE" | "HOLD";
+export type ActionType = "PAY" | "SWAP" | "SWAP_THEN_PAY" | "DEFER" | "ESCALATE" | "HOLD" | "RULE_CHANGE";
 
 export interface PolicyConfig {
   perPaymentCap: Record<Currency, number>;
@@ -87,8 +90,8 @@ export interface PaymentInfo {
 }
 
 export interface MarketInfo {
-  usdNgn: number; // live mid rate, NGN per USD
-  usdNgnAvg7d: number;
+  rates: Rates; // live mid rates, NGN per 1 unit
+  avg7d: Rates; // 7-day averages, same shape
   swapFeeBps: number;
 }
 
@@ -104,8 +107,14 @@ export interface SwapPlan {
   amountType: "to";
   toAmount: number; // lands in `to`
   fromAmount: number; // estimated debit from `from`, incl. fee
-  rate: number; // NGN per USD
+  rate: number; // units of `from` per 1 unit of `to`
 }
+
+/** Owner-approvable rule suggestions from the Learn stage. */
+export type RuleChange =
+  | { kind: "ALLOWLIST"; payeeId: string; payeeName: string; approvals: number }
+  | { kind: "UNALLOWLIST"; payeeId: string; payeeName: string; rejections: number }
+  | { kind: "RAISE_CAP"; currency: Currency; from: number; to: number; approvals: number };
 
 export interface ProposedAction {
   type: ActionType;
@@ -118,5 +127,10 @@ export interface ProposedAction {
   swap?: SwapPlan;
   /** For ESCALATE: what Bursar would do if the owner approves. */
   plan?: { kind: "PAY" | "SWAP_THEN_PAY"; swap?: SwapPlan };
+  /** For a REBALANCE swap: the due payments it funds, in priority order. */
+  covers?: string[];
+  /** For a PAY that needs a rebalance first: index of that SWAP in the same result. */
+  after?: number;
+  rule?: RuleChange;
   notes: string[];
 }

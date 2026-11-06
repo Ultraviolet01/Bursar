@@ -9,15 +9,19 @@ import { forgetBlaaiz, getBlaaiz, webhookSecretFor } from "@/blaaiz";
 import { MockBlaaizClient } from "@/blaaiz/mock";
 import { signWebhook } from "@/blaaiz/signature";
 import { approveAction, rejectAction, setPaused } from "@/engine/approvals";
-import { runCycle } from "@/engine/cycle";
+import { runCycle, triggerCycle } from "@/engine/cycle";
+import { executeAction } from "@/engine/execute";
+import { loadMarket } from "@/engine/observe";
+import type { ProposedAction } from "@/engine/types";
 import { CATEGORY_CRITICAL_DEFAULT, CATEGORY_PRIORITY, type Category } from "@/engine/types";
 import { destroySession, requireCompany, requireUser, setActiveCompany } from "@/lib/auth";
 import { createCompany, createDemoCompany } from "@/lib/companies";
 import { encryptSecret } from "@/lib/crypto";
 import { db } from "@/lib/db";
 import { setFlash } from "@/lib/flash";
-import { formatMoney, toMinor } from "@/lib/money";
-import { audit, merchantReference } from "@/lib/repo";
+import { CURRENCIES, type Currency, crossRate, formatMoney, isCurrency, parseCurrencies, swapCostFor, toMinor } from "@/lib/money";
+import { audit, loadPolicy, merchantReference, nextActionNumber } from "@/lib/repo";
+import { env } from "@/lib/env";
 import { handleBlaaizWebhook } from "@/webhooks/handler";
 
 const done = () => revalidatePath("/app", "layout");
@@ -68,12 +72,19 @@ export async function togglePause() {
 export async function savePolicy(formData: FormData) {
   const { company } = await requireCompany();
   const f = Object.fromEntries(formData) as Record<string, string>;
-  const pairs = ["NGN>USD", "USD>NGN"].filter((p) => f[`pair_${p}`] === "on");
+  const current = await loadPolicy(db, company.id);
+  const pairs = CURRENCIES.flatMap((a) => CURRENCIES.map((b) => `${a}>${b}`)).filter((p) => f[`pair_${p}`] === "on");
+  const caps = { ...current.perPaymentCap };
+  const buffers = { ...current.buffer };
+  for (const c of CURRENCIES) {
+    if (f[`cap${c}`]) caps[c] = money.parse(f[`cap${c}`]);
+    if (f[`buffer${c}`]) buffers[c] = money.parse(f[`buffer${c}`]);
+  }
   const data = {
-    perPaymentCap: JSON.stringify({ NGN: money.parse(f.capNGN), USD: money.parse(f.capUSD) }),
+    perPaymentCap: JSON.stringify(caps),
     dailyCapNgn: BigInt(money.parse(f.dailyCapNgn)),
     perSwapCapNgn: BigInt(money.parse(f.perSwapCapNgn)),
-    buffer: JSON.stringify({ NGN: money.parse(f.bufferNGN), USD: money.parse(f.bufferUSD) }),
+    buffer: JSON.stringify(buffers),
     allowedPairs: pairs.join(","),
     maxRateDeviationPct: z.coerce.number().min(0).max(50).parse(f.maxRateDeviationPct),
     horizonDays: z.coerce.number().int().min(1).max(60).parse(f.horizonDays),
@@ -90,8 +101,12 @@ export async function savePolicy(formData: FormData) {
 const PayeeSchema = z.object({
   name: z.string().trim().min(2, "Name is too short"),
   category: z.enum(["PAYROLL", "CRITICAL_VENDOR", "SAAS", "DOMAIN", "VENDOR", "UTILITY"]),
-  currency: z.enum(["NGN", "USD"]),
+  currency: z.enum(["NGN", "USD", "EUR", "GBP"]),
   method: z.enum(["bank_transfer", "mobile_money"]),
+  email: z.string().trim().optional(),
+  country: z.string().trim().max(2).optional(),
+  idType: z.enum(["", "drivers_license", "passport", "id_card", "resident_permit", "certificate_of_incorporation"]).optional(),
+  idNumber: z.string().trim().optional(),
   bankName: z.string().optional(),
   accountNumber: z.string().optional(),
   accountName: z.string().optional(),
@@ -101,9 +116,14 @@ const PayeeSchema = z.object({
 export async function createPayee(formData: FormData) {
   const { company } = await requireCompany();
   const p = PayeeSchema.parse(Object.fromEntries(formData));
+  if (!parseCurrencies(company.currencies).includes(p.currency)) throw new Error(`${company.name} has no ${p.currency} wallet. Add one in Wallets first.`);
   const row = await db.payee.create({
     data: {
       ...p,
+      email: p.email || null,
+      country: p.country ? p.country.toUpperCase() : null,
+      idType: p.idType || null,
+      idNumber: p.idNumber || null,
       companyId: company.id,
       bankId: p.bankName ? `mock_bank_${p.bankName.toLowerCase().replace(/\W+/g, "_")}` : null,
       allowlisted: false,
@@ -121,8 +141,138 @@ export async function toggleAllowlist(formData: FormData) {
   const p = await db.payee.findFirstOrThrow({ where: { id: String(formData.get("id")), companyId: company.id } });
   await db.payee.update({ where: { id: p.id }, data: { allowlisted: !p.allowlisted, verifiedAt: !p.allowlisted ? new Date() : p.verifiedAt } });
   await audit(db, company.id, "OWNER", `${p.allowlisted ? "Removed" : "Allowlisted"} ${p.name}`, "Payee", p.id);
-  await setFlash(p.allowlisted ? `${p.name} removed from the allowlist.` : `${p.name} is allowlisted.`, p.allowlisted ? "amber" : "good");
+  let extra = "";
+  // Setup: allowlisting also registers the payee with Blaaiz when their details are complete.
+  if (!p.allowlisted && !p.blaaizCustomerId && p.email && p.country && p.idType && p.idNumber) {
+    const ok = await registerPayee(company.id, p.id).catch(() => false);
+    extra = ok ? " Registered with Blaaiz." : " Could not register with Blaaiz yet.";
+  }
+  await setFlash(p.allowlisted ? `${p.name} removed from the allowlist.` : `${p.name} is allowlisted.${extra}`, p.allowlisted ? "amber" : "good");
   done();
+}
+
+async function registerPayee(companyId: string, payeeId: string): Promise<boolean> {
+  const p = await db.payee.findFirstOrThrow({ where: { id: payeeId, companyId } });
+  if (p.blaaizCustomerId) return true;
+  if (!p.email || !p.country || !p.idType || !p.idNumber) return false;
+  const business = p.category !== "PAYROLL";
+  const [first, ...rest] = p.name.split(" ");
+  const res = await (await getBlaaiz(companyId)).createCustomer({
+    firstName: business ? p.name : first,
+    lastName: business ? "Ltd" : rest.join(" ") || first,
+    businessName: business ? p.name : null,
+    type: business ? "business" : "individual",
+    email: p.email,
+    country: p.country,
+    idType: p.idType as "id_card",
+    idNumber: p.idNumber,
+  });
+  await db.payee.update({ where: { id: p.id }, data: { blaaizCustomerId: res.id } });
+  await audit(db, companyId, "OWNER", `Registered ${p.name} as a Blaaiz customer (${res.id})`, "Payee", p.id);
+  return true;
+}
+
+export async function registerPayeeAction(formData: FormData) {
+  const { company } = await requireCompany();
+  const p = await db.payee.findFirstOrThrow({ where: { id: String(formData.get("id")), companyId: company.id } });
+  try {
+    const ok = await registerPayee(company.id, p.id);
+    await setFlash(ok ? `${p.name} is a Blaaiz customer.` : `Add ${p.name}'s email, country and ID first.`, ok ? "good" : "amber");
+  } catch (e) {
+    await setFlash(`Blaaiz did not register ${p.name}: ${String(e).replace(/^Error: /, "")}`, "bad");
+  }
+  done();
+}
+
+export async function savePayeeKyc(formData: FormData) {
+  const { company } = await requireCompany();
+  const f = z
+    .object({ id: z.string(), email: z.string().trim().email(), country: z.string().trim().length(2), idType: z.enum(["drivers_license", "passport", "id_card", "resident_permit", "certificate_of_incorporation"]), idNumber: z.string().trim().min(3) })
+    .parse(Object.fromEntries(formData));
+  const p = await db.payee.findFirstOrThrow({ where: { id: f.id, companyId: company.id } });
+  await db.payee.update({ where: { id: p.id }, data: { email: f.email, country: f.country.toUpperCase(), idType: f.idType, idNumber: f.idNumber } });
+  const ok = await registerPayee(company.id, p.id).catch(() => false);
+  await setFlash(ok ? `${p.name} saved and registered with Blaaiz.` : `${p.name} saved. Registration with Blaaiz failed; try again.`, ok ? "good" : "amber");
+  done();
+}
+
+// ---- Wallet setup: add, fund, convert ----
+
+export async function addWallet(formData: FormData) {
+  const { company } = await requireCompany();
+  const currency = z.enum(["USD", "EUR", "GBP"]).parse(formData.get("currency"));
+  const held = parseCurrencies(company.currencies);
+  if (held.includes(currency)) return;
+  const client = await getBlaaiz(company.id);
+  if (!(client instanceof MockBlaaizClient)) {
+    await setFlash(`Create the ${currency} wallet in your Blaaiz dashboard. Bursar picks it up on the next cycle.`, "teal");
+    done();
+    return;
+  }
+  const id = await client.createWallet(currency);
+  await db.wallet.create({ data: { companyId: company.id, blaaizWalletId: id, currency, label: `${currency} wallet`, balance: 0n } });
+  await db.company.update({ where: { id: company.id }, data: { currencies: [...held, currency].join(",") } });
+  await audit(db, company.id, "OWNER", `Added a ${currency} wallet`, "Wallet", id);
+  await setFlash(`${currency} wallet added. Fund it by converting from NGN.`);
+  done();
+  redirect(`/app/wallets?c=${currency}`);
+}
+
+export async function createVirtualAccountAction(formData: FormData) {
+  const { company } = await requireCompany();
+  const currency = isCurrency(formData.get("currency")) ? (formData.get("currency") as Currency) : "NGN";
+  const wallet = await db.wallet.findUniqueOrThrow({ where: { companyId_currency: { companyId: company.id, currency } } });
+  try {
+    const va = await (await getBlaaiz(company.id)).createVirtualAccount(wallet.blaaizWalletId, company.name);
+    await db.wallet.update({ where: { id: wallet.id }, data: { vaAccountNumber: va.accountNumber, vaAccountName: va.accountName, vaBankName: va.bankName } });
+    await audit(db, company.id, "OWNER", `Created a virtual account for the ${currency} wallet (${va.bankName} ${va.accountNumber})`, "Wallet", wallet.id);
+    await setFlash(`Bank account ready: ${va.bankName} ${va.accountNumber}.`);
+  } catch (e) {
+    await setFlash(`Blaaiz did not create the account: ${String(e).replace(/^Error: /, "")}`, "bad");
+  }
+  done();
+}
+
+/** Owner-initiated swap between the company's own wallets. Still previewed and policy-checked. */
+export async function convertCurrency(formData: FormData) {
+  const { company } = await requireCompany();
+  const f = z.object({ from: z.enum(["NGN", "USD", "EUR", "GBP"]), to: z.enum(["NGN", "USD", "EUR", "GBP"]), amount: money }).parse(Object.fromEntries(formData));
+  if (f.from === f.to) throw new Error("Pick two different wallets");
+  const client = await getBlaaiz(company.id);
+  const market = await loadMarket(db, client, false);
+  const proposal: ProposedAction = {
+    type: "SWAP",
+    reasonCode: "REBALANCE",
+    reasons: ["REBALANCE"],
+    amount: f.amount,
+    currency: f.to,
+    fee: 0,
+    swap: { from: f.from, to: f.to, amountType: "to", toAmount: f.amount, fromAmount: swapCostFor(f.amount, f.from, f.to, market.rates, market.swapFeeBps), rate: crossRate(f.from, f.to, market.rates) },
+    notes: ["Started by you from Wallets"],
+  };
+  const row = await db.action.create({
+    data: {
+      companyId: company.id,
+      number: await nextActionNumber(db, company.id),
+      type: "SWAP",
+      payload: JSON.stringify(proposal),
+      reasonCode: "REBALANCE",
+      explanation: `You converted ${f.from} into ${formatMoney(f.amount, f.to)}.`,
+      policyResult: JSON.stringify({ checks: [], autoOk: false, ownerOk: true }),
+      status: "PENDING",
+    },
+  });
+  const out = await executeAction(db, client, row.id, { ownerApproved: true });
+  if (out.status === "EXECUTED") {
+    await db.action.update({ where: { id: row.id }, data: { decidedBy: "OWNER", decidedAt: new Date() } });
+    await setFlash(`Converted into ${formatMoney(f.amount, f.to)}.`);
+    void triggerCycle(company.id, "APPROVAL");
+  } else {
+    await db.action.update({ where: { id: row.id }, data: { status: "REJECTED", decidedBy: "OWNER", decidedAt: new Date(), explanation: `Conversion not run: ${out.message}` } });
+    await setFlash(`Not converted: ${out.message}`, "bad");
+  }
+  done();
+  redirect(`/app/wallets?c=${f.to}`);
 }
 
 export async function toggleCritical(formData: FormData) {
@@ -158,7 +308,9 @@ export async function createPayment(formData: FormData) {
     },
   });
   await audit(db, company.id, "OWNER", `Scheduled ${formatMoney(f.amount, payee.currency)} to ${payee.name} for ${f.dueDate}`, "ScheduledPayment", id);
-  await setFlash(`Scheduled ${formatMoney(f.amount, payee.currency)} to ${payee.name}.`);
+  // Event-driven cadence: a new bill runs a cycle straight away.
+  const res = await triggerCycle(company.id, "BILL");
+  await setFlash(`Scheduled ${formatMoney(f.amount, payee.currency)} to ${payee.name}.${res ? ` Cycle ran: ${res.summary}` : ""}`);
   done();
   redirect("/app/payments");
 }
@@ -178,7 +330,7 @@ export async function simulateDeposit(formData: FormData) {
   const { company } = await requireCompany();
   const client = await getBlaaiz(company.id);
   if (!(client instanceof MockBlaaizClient)) throw new Error("Deposits can only be simulated in mock mode");
-  const currency = z.enum(["NGN", "USD"]).parse(formData.get("currency"));
+  const currency = z.enum(["NGN", "USD", "EUR", "GBP"]).parse(formData.get("currency"));
   const amount = money.parse(String(formData.get("amount")));
   await client.simulateDeposit(currency, amount);
   await setFlash(`Deposited ${formatMoney(amount, currency)} (simulated).`);
@@ -234,12 +386,14 @@ export async function switchCompany(formData: FormData) {
 export async function addCompany(formData: FormData) {
   const session = await requireUser();
   const f = z
-    .object({ name: z.string().trim().min(2), openingNgn: z.coerce.number().min(0).default(0), openingUsd: z.coerce.number().min(0).default(0), demo: z.string().optional() })
+    .object({ name: z.string().trim().min(2), demo: z.string().optional() })
     .parse(Object.fromEntries(formData));
+  const currencies = CURRENCIES.filter((c) => c === "NGN" || formData.get(`cur_${c}`) === "on");
+  const opening = Object.fromEntries(currencies.map((c) => [c, Number(formData.get(`opening_${c}`) ?? 0) || 0]));
   const company =
     f.demo === "on"
       ? await createDemoCompany(db, session.userId, f.name)
-      : await createCompany(db, { ownerId: session.userId, name: f.name, openingNgn: f.openingNgn, openingUsd: f.openingUsd });
+      : await createCompany(db, { ownerId: session.userId, name: f.name, currencies, opening });
   await setActiveCompany(session.id, company.id);
   await setFlash(`${company.name} is ready.`);
   revalidatePath("/app", "layout");

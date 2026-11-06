@@ -5,7 +5,7 @@ import { db } from "../src/lib/db";
 import { setBlaaiz } from "../src/blaaiz";
 import { MockBlaaizClient } from "../src/blaaiz/mock";
 import { runCycle } from "../src/engine/cycle";
-import { approveAction, setPaused } from "../src/engine/approvals";
+import { approveAction, rejectAction, setPaused } from "../src/engine/approvals";
 import { handleBlaaizWebhook } from "../src/webhooks/handler";
 import { signWebhook } from "../src/blaaiz/signature";
 
@@ -39,7 +39,7 @@ beforeEach(async () => {
 describe("cycle", () => {
   it("runs the demo cycle and never pays twice", async () => {
     const first = await runCycle(db, client, companyId, "MANUAL");
-    expect(first.counts).toMatchObject({ paid: 5, waiting: 1 });
+    expect(first.counts).toMatchObject({ paid: 5, swapped: 1, waiting: 1 });
     await settleAll();
     const second = await runCycle(db, client, companyId, "MANUAL");
     expect(second.counts).toMatchObject({ paid: 0, waiting: 0 });
@@ -131,5 +131,100 @@ describe("multiple companies", () => {
     const body = JSON.stringify({ event: "payout.completed", data: { transaction_id: tx.id } });
     const sig = signWebhook(body, "1", "test_secret");
     expect((await handleBlaaizWebhook(otherId, body, sig, "1")).body.message).toBe("No matching payout");
+  });
+});
+
+describe("full lifecycle", () => {
+  it("rebalance waits for the owner when over the swap cap; approving it pays the held bills in a follow-up cycle", async () => {
+    await db.policy.update({ where: { companyId }, data: { perSwapCapNgn: 50_000_000n } }); // NGN 500,000
+    const first = await runCycle(db, client, companyId, "MANUAL");
+    expect(first.counts.held).toBe(2);
+    const swap = await db.action.findFirstOrThrow({ where: { companyId, type: "SWAP", status: "PENDING", reasonCode: "REBALANCE" } });
+    expect(await db.action.count({ where: { companyId, type: "HOLD" } })).toBe(2);
+
+    // A scheduled run while the swap waits must not propose it again or re-log the holds.
+    await runCycle(db, client, companyId, "SCHEDULE");
+    expect(await db.action.count({ where: { companyId, type: "SWAP", status: "PENDING" } })).toBe(1);
+    expect(await db.action.count({ where: { companyId, type: "HOLD" } })).toBe(2);
+
+    await db.policy.update({ where: { companyId }, data: { perSwapCapNgn: 300_000_000n } });
+    const out = await approveAction(db, client, swap.id);
+    expect(out.status).toBe("EXECUTED");
+    const followUp = await db.cycle.findFirstOrThrow({ where: { companyId, trigger: "APPROVAL" } });
+    expect(followUp.summary).toMatch(/2 paid/);
+    expect(await db.scheduledPayment.count({ where: { companyId, payee: { currency: "USD" }, status: "EXECUTING" } })).toBe(2);
+  });
+
+  it("rejecting a rebalance stops it being proposed again today", async () => {
+    await db.policy.update({ where: { companyId }, data: { perSwapCapNgn: 50_000_000n } });
+    await runCycle(db, client, companyId, "MANUAL");
+    const swap = await db.action.findFirstOrThrow({ where: { companyId, type: "SWAP", status: "PENDING" } });
+    await rejectAction(db, swap.id);
+    await runCycle(db, client, companyId, "MANUAL");
+    expect(await db.action.count({ where: { companyId, type: "SWAP", status: "PENDING" } })).toBe(0);
+    // The critical USD contractor now needs the owner instead.
+    expect(await db.action.findFirst({ where: { companyId, type: "ESCALATE", status: "PENDING", paymentId: { contains: "pm_harbor" } } })).not.toBeNull();
+  });
+
+  it("previews fees and writes a ledger entry for every movement", async () => {
+    await runCycle(db, client, companyId, "MANUAL");
+    const swapExec = await db.execution.findFirstOrThrow({ where: { companyId, kind: "SWAP" } });
+    expect(JSON.parse(swapExec.request)._preview.fromAmount).toBeGreaterThan(0);
+    const ledger = await db.ledgerEntry.findMany({ where: { companyId } });
+    expect(ledger.filter((l) => l.kind === "PAYOUT")).toHaveLength(5);
+    expect(ledger.filter((l) => l.kind === "FEE")).toHaveLength(5);
+    expect(ledger.filter((l) => l.kind === "SWAP_OUT" && l.currency === "NGN")).toHaveLength(1);
+    expect(ledger.filter((l) => l.kind === "SWAP_IN" && l.currency === "USD")).toHaveLength(1);
+    // Ledger agrees with the wallet: opening USD + swap in - payouts - fees = balance.
+    const usd = ledger.filter((l) => l.currency === "USD").reduce((s, l) => s + Number(l.amount), 0);
+    const w = await db.mockWallet.findFirstOrThrow({ where: { companyId, currency: "USD" } });
+    expect(120_000 + usd).toBe(Number(w.balance));
+  });
+
+  it("a failed payout writes a refund to the ledger", async () => {
+    await db.payee.updateMany({ where: { companyId, name: "Ada Obi" }, data: { accountNumber: "0000000000" } });
+    await runCycle(db, client, companyId, "MANUAL");
+    const ada = await db.mockTransaction.findFirstOrThrow({ where: { companyId, merchantReference: { contains: "pm_ada" } } });
+    await client.settle(ada.id, true);
+    expect(await db.ledgerEntry.findFirst({ where: { companyId, kind: "REFUND", amount: 45_005_000n } })).not.toBeNull();
+  });
+
+  it("rebalances NGN into an empty EUR wallet to pay a EUR supplier and keep the EUR buffer", async () => {
+    const other = mockFor(otherId);
+    const res = await runCycle(db, other, otherId, "MANUAL");
+    // One rebalance into EUR for the supplier due today, one top-up into USD for a bill due in 4 days.
+    expect(res.counts).toMatchObject({ swapped: 2, paid: 1 });
+    const rebalance = await db.action.findFirstOrThrow({ where: { companyId: otherId, type: "SWAP", reasonCode: "REBALANCE" } });
+    expect(JSON.parse(rebalance.payload).currency).toBe("EUR");
+    const eur = await db.mockWallet.findFirstOrThrow({ where: { companyId: otherId, currency: "EUR" } });
+    expect(Number(eur.balance)).toBeGreaterThanOrEqual(20_000);
+  });
+
+  it("learns: after two approvals for a new payee, suggests allowlisting them; accepting applies it", async () => {
+    await db.policy.update({ where: { companyId }, data: { dailyCapNgn: 10_000_000_000n, perPaymentCap: JSON.stringify({ NGN: 1_000_000_000, USD: 150_000 }) } });
+    const zaria = await db.payee.findFirstOrThrow({ where: { companyId, name: "Zaria Haulage Ltd" } });
+    await runCycle(db, client, companyId, "MANUAL");
+    await approveAction(db, client, (await db.action.findFirstOrThrow({ where: { companyId, type: "ESCALATE", status: "PENDING" } })).id);
+    // A second bill to the same payee.
+    await db.scheduledPayment.create({
+      data: { id: "pm_zaria_2", companyId, payeeId: zaria.id, amount: 10_000_000n, currency: "NGN", dueDate: new Date().toISOString().slice(0, 10), priority: 4, critical: false, merchantReference: "bursar-pm_zaria_2-x" },
+    });
+    await runCycle(db, client, companyId, "MANUAL");
+    await approveAction(db, client, (await db.action.findFirstOrThrow({ where: { companyId, type: "ESCALATE", status: "PENDING" } })).id);
+    const res = await runCycle(db, client, companyId, "MANUAL");
+    expect(res.counts.learned).toBe(1);
+    const suggestion = await db.action.findFirstOrThrow({ where: { companyId, type: "RULE_CHANGE", status: "PENDING" } });
+    expect(suggestion.explanation).toMatch(/Zaria Haulage Ltd 2 times/);
+    await approveAction(db, client, suggestion.id);
+    expect((await db.payee.findUniqueOrThrow({ where: { id: zaria.id } })).allowlisted).toBe(true);
+    // Not suggested twice.
+    expect((await runCycle(db, client, companyId, "MANUAL")).counts.learned).toBe(0);
+  });
+
+  it("a deposit webhook triggers a cycle (event-driven cadence)", async () => {
+    await client.simulateDeposit("NGN", 100_000_00);
+    for (let i = 0; i < 50 && !(await db.cycle.findFirst({ where: { companyId, trigger: "WEBHOOK", finishedAt: { not: null } } })); i++) await new Promise((r) => setTimeout(r, 100));
+    expect(await db.cycle.findFirst({ where: { companyId, trigger: "WEBHOOK" } })).not.toBeNull();
+    expect(await db.ledgerEntry.findFirst({ where: { companyId, kind: "DEPOSIT" } })).not.toBeNull();
   });
 });

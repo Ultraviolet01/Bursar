@@ -25,7 +25,7 @@ export default async function Approvals({ searchParams }: { searchParams: Search
     db.action.findMany({ where: { companyId, decidedBy: "OWNER" }, orderBy: { decidedAt: "desc" }, take: 20 }),
     db.wallet.findMany({ where: { companyId } }),
     loadPolicy(db, companyId),
-    db.rateSnapshot.findFirst({ orderBy: { fetchedAt: "desc" } }),
+    db.rateSnapshot.findMany({ orderBy: { fetchedAt: "desc" }, take: 12 }),
   ]);
   const list = tab === "waiting" ? waiting : decided;
   const selectedId = sp.id ?? list[0]?.id ?? waiting[0]?.id;
@@ -80,7 +80,7 @@ export default async function Approvals({ searchParams }: { searchParams: Search
             policy={policy}
             bal={bal}
             walletIds={Object.fromEntries(wallets.map((w) => [w.currency, w.blaaizWalletId]))}
-            rate={rate ? { value: rate.rate, at: rate.fetchedAt } : null}
+            rates={rate}
             blocked={selected.id === sp.id ? sp.blocked : undefined}
           />
         ) : (
@@ -96,9 +96,9 @@ function why(a: ProposedAction, payment: (ScheduledPayment & { payee: Payee }) |
   const cur = a.currency;
   for (const r of a.reasons) {
     if (r === "NEW_PAYEE") out.push(`${payment?.payee.name} is not on your allowlist. Bursar never pays a new payee alone.`);
-    if (r === "OVER_PAYMENT_CAP") out.push(`${formatMoney(a.amount, cur)} is over your ${formatMoney(policy.perPaymentCap[cur], cur)} per-payment line.`);
+    if (r === "OVER_PAYMENT_CAP") out.push(`${formatMoney(a.amount, cur)} is over your ${formatMoney(policy.perPaymentCap[cur] ?? 0, cur)} per-payment line.`);
     if (r === "OVER_DAILY_CAP") out.push(`Paying it would take today's total over ${formatMoney(policy.dailyCapNgn, "NGN")}.`);
-    if (r === "SHORTFALL_CRITICAL") out.push(`${cur} has ${formatMoney(Math.max(0, bal(cur) - policy.buffer[cur]), cur)} above its buffer and no wallet could cover the gap within your rules.`);
+    if (r === "SHORTFALL_CRITICAL") out.push(`${cur} has ${formatMoney(Math.max(0, bal(cur) - (policy.buffer[cur] ?? 0)), cur)} above its buffer and no wallet could cover the gap within your rules.`);
     if (r === "RATE_TOO_WIDE") out.push(`Today's rate is more than ${policy.maxRateDeviationPct}% worse than the 7-day average.`);
     if (r === "OVER_SWAP_CAP") out.push(`The swap needed is over your ${formatMoney(policy.perSwapCapNgn, "NGN")} swap cap.`);
     if (r === "PAIR_NOT_ALLOWED") out.push(`The swap needed uses a currency pair you have not allowed.`);
@@ -108,9 +108,18 @@ function why(a: ProposedAction, payment: (ScheduledPayment & { payee: Payee }) |
     if (r === "ROUTINE_OK") out.push("Within your rules, but auto-execute is off or a live check needs you.");
   }
   const swap = a.type === "ESCALATE" ? a.plan?.swap : a.swap;
-  if (swap) out.push(`Approving swaps ${formatMoney(swap.fromAmount, swap.from)} into ${formatMoney(swap.toAmount, swap.to)} first, at about ${swap.rate.toLocaleString("en-US")} NGN per USD including the swap fee.`);
-  if (a.type !== "SWAP") out.push(`Blaaiz charges about ${formatMoney(a.fee, cur)}, so ${formatMoney(a.amount + a.fee, cur)} leaves the ${cur} wallet.`);
+  if (a.reasons.includes("REBALANCE")) out.push(`${cur} is short for bills due now. ${a.swap?.from} has surplus above its buffer, so Bursar rebalances between your own wallets.`);
+  if (a.type === "RULE_CHANGE") out.push(action_explanation(a));
+  if (swap) out.push(`Approving swaps ${formatMoney(swap.fromAmount, swap.from)} into ${formatMoney(swap.toAmount, swap.to)} first, at about ${swap.rate.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${swap.from} per ${swap.to} including the swap fee. Blaaiz previews the exact rate and fee again before it runs.`);
+  if (a.type !== "SWAP" && a.type !== "RULE_CHANGE") out.push(`Blaaiz charges about ${formatMoney(a.fee, cur)}, so ${formatMoney(a.amount + a.fee, cur)} leaves the ${cur} wallet.`);
   return out;
+}
+
+function action_explanation(a: ProposedAction): string {
+  const r = a.rule!;
+  if (r.kind === "ALLOWLIST") return `You approved ${r.payeeName} ${r.approvals} times in the last 60 days.`;
+  if (r.kind === "UNALLOWLIST") return `You rejected ${r.payeeName} ${r.rejections} times since you last approved them.`;
+  return `You approved ${r.approvals} ${r.currency} payments over the cap in the last 30 days.`;
 }
 
 const CHECK: Record<CheckStatus, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -144,19 +153,23 @@ function Flow({ left, mid, midSub, right }: { left: React.ReactNode; mid: string
   );
 }
 
-function Detail({ action, payment, policy, bal, walletIds, rate, blocked }: {
+function Detail({ action, payment, policy, bal, walletIds, rates, blocked }: {
   action: Awaited<ReturnType<typeof db.action.findUniqueOrThrow>>;
   payment?: ScheduledPayment & { payee: Payee };
   policy: PolicyConfig;
   bal: (c: string) => number;
   walletIds: Record<string, string>;
-  rate: { value: number; at: Date } | null;
+  rates: { pair: string; rate: number; fetchedAt: Date }[];
   blocked?: string;
 }) {
   const { proposal: a, policy: result } = parsed(action);
   const swap = a.type === "ESCALATE" ? a.plan?.swap : a.swap;
-  const payout = a.type !== "SWAP";
   const cur = a.currency as Currency;
+  const payout = a.type !== "SWAP" && a.type !== "RULE_CHANGE";
+  // Show the rate that matters for this proposal: the swap's foreign leg, or the bill's currency.
+  const rateCur = swap ? (swap.from === "NGN" ? swap.to : swap.from) : cur;
+  const snap = rateCur === "NGN" ? null : rates.find((r) => r.pair === `${rateCur}NGN`);
+  const rule = a.type === "RULE_CHANGE" ? a.rule : undefined;
   const o = outcome(action);
   const pending = action.status === "PENDING";
   const fmt = (m: number, c: string) => formatMoney(m, c);
@@ -176,17 +189,36 @@ function Detail({ action, payment, policy, bal, walletIds, rate, blocked }: {
             </span>
           </div>
           <h2 className="mt-4 text-[28px] text-ink">{title(action, payment?.payee.name)}</h2>
-          <div className="mt-3"><Amount minor={a.amount} currency={cur} size="xl" /></div>
+          {!rule && <div className="mt-3"><Amount minor={a.amount} currency={cur} size="xl" /></div>}
         </div>
-        {rate && (
+        {snap && !rule && (
           <div className="shrink-0 rounded-xl bg-amber-card px-5 py-3 sm:text-right">
-            <div className="whitespace-nowrap text-sm text-amber">USD/NGN, {timeAgo(rate.at)}</div>
-            <div className="display num mt-1 text-[30px] text-amber">{rate.value.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+            <div className="whitespace-nowrap text-sm text-amber">{rateCur}/NGN, {timeAgo(snap.fetchedAt)}</div>
+            <div className="display num mt-1 text-[30px] text-amber">{snap.rate.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
           </div>
         )}
       </div>
 
-      <div className="mt-8 space-y-3 rounded-2xl bg-canvas p-4 sm:p-5">
+      {rule && (
+        <div className="mt-8 rounded-2xl bg-canvas p-5">
+          <div className="text-sm text-muted">What changes if you accept</div>
+          <div className="mt-2 text-[17px] text-ink">
+            {rule.kind === "ALLOWLIST" && <>{rule.payeeName} joins the allowlist. Routine payments to them run without asking, still inside every cap and buffer.</>}
+            {rule.kind === "UNALLOWLIST" && <>{rule.payeeName} leaves the allowlist. Every payment to them will ask you first.</>}
+            {rule.kind === "RAISE_CAP" && <>{rule.currency} per-payment cap: <span className="num">{formatMoney(rule.from, rule.currency, { decimals: false })}</span> → <span className="num font-medium">{formatMoney(rule.to, rule.currency, { decimals: false })}</span></>}
+          </div>
+          <p className="mt-2 text-sm text-muted">Suggested by the Learn stage from your own decisions. Nothing moves money; you can change it back in Rules or Payees.</p>
+        </div>
+      )}
+
+      {a.covers && a.covers.length > 0 && (
+        <div className="mt-6 rounded-xl border border-line px-5 py-4">
+          <div className="text-sm text-muted">This rebalance pays, once approved</div>
+          <p className="mt-1 text-[15px] text-ink">{action.explanation.match(/Covers: (.*)\./)?.[1] ?? `${a.covers.length} held bills`}</p>
+        </div>
+      )}
+
+      <div className={`mt-8 space-y-3 rounded-2xl bg-canvas p-4 sm:p-5 ${rule ? "hidden" : ""}`}>
         {swap && (
           <Flow
             left={<Box top={`${swap.from} wallet`} title={`Treasury ${swap.from}`} sub={`${formatMinor(bal(swap.from))} → ${formatMinor(bal(swap.from) - swap.fromAmount)}`} />}
@@ -215,11 +247,11 @@ function Detail({ action, payment, policy, bal, walletIds, rate, blocked }: {
         ))}
       </ol>
 
-      <div className="mt-8 flex items-center justify-between">
+      <div className={`mt-8 flex items-center justify-between ${result.checks.length ? "" : "hidden"}`}>
         <h3 className="flex items-center gap-2 text-[18px] text-ink"><IconShield className="h-5 w-5 text-teal" />Policy checks</h3>
         <span className="text-sm text-muted">rechecked live on approval</span>
       </div>
-      <div className="mt-3 divide-y divide-line border-y border-line">
+      <div className={`mt-3 divide-y divide-line border-y border-line ${result.checks.length ? "" : "hidden"}`}>
         {result.checks.map((c) => (
           <div key={c.id} className="flex items-center gap-4 py-3.5">
             {CHECK[c.status].icon}
@@ -246,7 +278,7 @@ function Detail({ action, payment, policy, bal, walletIds, rate, blocked }: {
             </form>
             <form action={approveProposal}>
               <input type="hidden" name="id" value={action.id} />
-              <SubmitButton pendingText="Running">Approve and run</SubmitButton>
+              <SubmitButton pendingText="Running">{rule ? "Accept suggestion" : "Approve and run"}</SubmitButton>
             </form>
           </div>
         )}

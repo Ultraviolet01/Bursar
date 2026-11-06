@@ -17,10 +17,11 @@ export default async function Overview() {
   const { company: active } = await requireCompany();
   const companyId = active.id;
   const [{ pending, lastCycle, mode, company }, t] = await Promise.all([getShell(companyId), getTreasury(companyId)]);
-  const [proposals, recent, payeeCount] = await Promise.all([
+  const [proposals, recent, payees, rulesReviewed] = await Promise.all([
     db.action.findMany({ where: { companyId, status: "PENDING" }, orderBy: { number: "desc" }, take: 3 }),
-    db.action.findMany({ where: { companyId }, orderBy: { number: "desc" }, take: 5 }),
-    db.payee.count({ where: { companyId, allowlisted: true } }),
+    db.action.findMany({ where: { companyId, type: { not: "HOLD" } }, orderBy: { number: "desc" }, take: 5 }),
+    db.payee.findMany({ where: { companyId }, select: { allowlisted: true, blaaizCustomerId: true } }),
+    db.auditLog.count({ where: { companyId, message: "Updated rules" } }),
   ]);
   const payeeNames = new Map(t.payments.map((p) => [p.id, p.payee.name]));
   const extra = await db.scheduledPayment.findMany({
@@ -31,12 +32,17 @@ export default async function Overview() {
 
   const weekEnd = addDays(t.today, 6);
   const upcoming = t.payments.filter((p) => p.dueDate <= weekEnd).slice(0, 6);
-  const funded = t.wallets.some((w) => Number(w.balance) > 0);
+  // Setup, in the lifecycle's order.
+  const ngnWallet = t.wallets.find((w) => w.currency === "NGN");
+  const foreign = t.currencies.filter((c) => c !== "NGN");
+  const allowlisted = payees.filter((p) => p.allowlisted);
+  const registered = allowlisted.filter((p) => p.blaaizCustomerId).length;
   const steps = [
-    { done: true, title: "Blaaiz connected", sub: mode === "mock" ? "Mock client. Switch to live when sandbox credentials arrive." : "Live sandbox via OAuth client credentials" },
-    { done: true, title: "Rules set", sub: `Per payment, per day, buffers and swap pairs` },
-    { done: payeeCount > 0, title: "Allowlist your payees", sub: "Bursar only pays people you have approved" },
-    { done: funded, title: "Fund a wallet", sub: "Deposit NGN into your Blaaiz business wallet" },
+    { done: t.currencies.length > 1, title: "Create your currency wallets", sub: `${t.currencies.join(", ")}${mode === "mock" ? " (mock)" : " on Blaaiz"}`, href: "/app/wallets" },
+    { done: allowlisted.length > 0 && registered === allowlisted.length, title: "Register payees with Blaaiz", sub: allowlisted.length ? `${registered} of ${allowlisted.length} allowlisted payees are Blaaiz customers` : "Add employees and key vendors, then allowlist them", href: "/app/payees" },
+    { done: !!ngnWallet?.vaAccountNumber && Number(ngnWallet.balance) > 0, title: "Fund NGN by bank transfer", sub: ngnWallet?.vaAccountNumber ? `${ngnWallet.vaBankName} ${ngnWallet.vaAccountNumber}` : "Create the NGN wallet's funding account", href: "/app/wallets?c=NGN" },
+    { done: foreign.length > 0 && foreign.every((c) => t.fc[c].balance > 0), title: "Swap into your other currencies", sub: foreign.length ? foreign.map((c) => `${c} ${formatMinor(t.fc[c].balance, { decimals: false })}`).join(", ") : "Add a USD, EUR or GBP wallet first", href: `/app/wallets?c=${foreign[0] ?? "NGN"}` },
+    { done: rulesReviewed > 0, title: "Set your hard rules", sub: "Buffers, daily cap, allowlisted payees, allowed pairs", href: "/app/rules" },
   ];
   const setupDone = steps.every((s) => s.done);
 
@@ -53,21 +59,23 @@ export default async function Overview() {
         <section className="mb-6 grid gap-6 rounded-2xl border border-amber-line bg-amber-card p-6 lg:grid-cols-[1fr_2fr]">
           <div>
             <h2 className="display text-[26px] text-ink">Finish setting up {company?.name}</h2>
-            <p className="mt-2 text-[15px] text-body">Until every step is done, Bursar can still propose payments for you to approve.</p>
+            <p className="mt-2 text-[15px] text-body">One-time setup. Until it is done, Bursar can still propose payments for you to approve.</p>
+            <p className="mt-4 text-sm text-muted">{steps.filter((s) => s.done).length} of {steps.length} done</p>
           </div>
           <div className="divide-y divide-line rounded-xl bg-surface">
             {steps.map((s) => (
-              <div key={s.title} className="flex items-center gap-4 px-5 py-4">
+              <Link key={s.title} href={s.href} className="flex items-center gap-4 px-5 py-4 transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-canvas">
                 {s.done ? (
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-good text-white"><IconCheck className="h-4 w-4" /></span>
                 ) : (
                   <span className="h-6 w-6 rounded-full border-2 border-line" />
                 )}
-                <div>
-                  <div className="text-[15px] font-medium text-ink">{s.title}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[15px] font-medium text-ink">{s.title}<span className="sr-only">{s.done ? ", done" : ", to do"}</span></div>
                   <div className="text-sm text-muted">{s.sub}</div>
                 </div>
-              </div>
+                {!s.done && <span className="text-sm text-teal" aria-hidden>Set up</span>}
+              </Link>
             ))}
           </div>
         </section>
@@ -80,7 +88,10 @@ export default async function Overview() {
               <div className="text-[15px] text-body">Total treasury</div>
               <div className="mt-2"><Amount minor={t.totalNgn} currency="NGN equiv." size="xl" decimals={false} animate /></div>
               <div className="mt-2 text-[15px] text-muted">
-                {t.wallets.length} wallets on Blaaiz, USD/NGN <span className="num">{t.usdNgn.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                {t.currencies.length} wallets on Blaaiz
+                {t.currencies.filter((c) => c !== "NGN").map((c) => (
+                  <span key={c}>, {c}/NGN <span className="num">{t.rates[c].toLocaleString("en-US", { minimumFractionDigits: 2 })}</span></span>
+                ))}
               </div>
             </div>
           </div>
@@ -89,7 +100,7 @@ export default async function Overview() {
             <ForecastChart points={[{ date: "now", label: "Now", value: t.totalNgn }, ...t.totalSeries.map((p) => ({ ...p, label: shortDate(p.date) }))]} buffer={t.bufferNgn} currency="NGN" />
           </div>
           <p className="mt-2 text-sm text-muted">
-            {t.payments.length ? `Includes ${t.payments.length} scheduled payment${t.payments.length > 1 ? "s" : ""} and estimated fees. USD converted at today's rate.` : "No bills on file yet, so Bursar forecasts a flat balance."}
+            {t.payments.length ? `Includes ${t.payments.length} scheduled payment${t.payments.length > 1 ? "s" : ""} and estimated fees. Other currencies converted at today's rates.` : "No bills on file yet, so Bursar forecasts a flat balance."}
           </p>
         </div>
 
@@ -132,8 +143,8 @@ export default async function Overview() {
         </div>
       </section>
 
-      <section className="stagger mt-6 grid gap-6 md:grid-cols-2">
-        {CURRENCIES.map((c) => {
+      <section className={`stagger mt-6 grid gap-6 md:grid-cols-2 ${t.currencies.length > 2 ? "2xl:grid-cols-4" : ""}`}>
+        {t.currencies.map((c) => {
           const f = t.fc[c];
           const h = walletHealth(f);
           const w = t.wallets.find((x) => x.currency === c);
@@ -144,7 +155,7 @@ export default async function Overview() {
                   <div className="text-[16px] font-medium text-ink">{c} wallet</div>
                   <div className="mt-0.5 font-mono text-[13px] text-faint">{w?.blaaizWalletId}</div>
                 </div>
-                <Tag>Blaaiz</Tag>
+                <Tag>{c === "NGN" ? "Base" : `${t.rates[c].toLocaleString("en-US", { maximumFractionDigits: 0 })} NGN`}</Tag>
               </div>
               <div className="mt-5"><Amount minor={f.balance} currency={c} size="lg" animate /></div>
               <div className="mt-4 grid grid-cols-3 gap-3 text-sm">

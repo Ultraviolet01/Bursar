@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { formatMinor } from "@/lib/money";
 import { loadPolicy } from "@/lib/repo";
 import { savePolicy } from "../actions";
+import { parseCurrencies } from "@/lib/money";
 
 function Field({ name, label, hint, value, suffix }: { name: string; label: string; hint: string; value: string | number; suffix?: string }) {
   return (
@@ -25,6 +26,8 @@ function Field({ name, label, hint, value, suffix }: { name: string; label: stri
 export default async function Rules() {
   const { company } = await requireCompany();
   const p = await loadPolicy(db, company.id);
+  const held = parseCurrencies(company.currencies);
+  const pairs = held.flatMap((a) => held.filter((b) => b !== a).map((b) => `${a}>${b}`));
   const m = (v: number) => formatMinor(v).replace(/,/g, "").replace(/\.00$/, "");
   return (
     <>
@@ -33,8 +36,9 @@ export default async function Rules() {
         <div className="card p-6">
           <h2 className="flex items-center gap-2 text-[18px] text-ink"><IconLine className="h-5 w-7 text-amber" />Limits</h2>
           <div className="mt-2">
-            <Field name="capNGN" label="Per payment, NGN" hint="Larger payments wait for you" value={m(p.perPaymentCap.NGN)} suffix="NGN" />
-            <Field name="capUSD" label="Per payment, USD" hint="Larger payments wait for you" value={m(p.perPaymentCap.USD)} suffix="USD" />
+            {held.map((c) => (
+              <Field key={c} name={`cap${c}`} label={`Per payment, ${c}`} hint="Larger payments wait for you" value={m(p.perPaymentCap[c] ?? 0)} suffix={c} />
+            ))}
             <Field name="dailyCapNgn" label="Per day, all currencies" hint="Total paid out today, in NGN equivalent" value={m(p.dailyCapNgn)} suffix="NGN" />
             <Field name="perSwapCapNgn" label="Per swap" hint="Largest single currency swap, NGN equivalent" value={m(p.perSwapCapNgn)} suffix="NGN" />
           </div>
@@ -42,22 +46,26 @@ export default async function Rules() {
         <div className="card p-6">
           <h2 className="text-[18px] text-ink">Buffers and timing</h2>
           <div className="mt-2">
-            <Field name="bufferNGN" label="NGN buffer" hint="Never spent by an automated action" value={m(p.buffer.NGN)} suffix="NGN" />
-            <Field name="bufferUSD" label="USD buffer" hint="Never spent by an automated action" value={m(p.buffer.USD)} suffix="USD" />
+            {held.map((c) => (
+              <Field key={c} name={`buffer${c}`} label={`${c} buffer`} hint="Never spent by an automated action" value={m(p.buffer[c] ?? 0)} suffix={c} />
+            ))}
             <Field name="horizonDays" label="Planning horizon" hint="How far ahead Bursar forecasts" value={p.horizonDays} suffix="days" />
             <Field name="maxDeferDays" label="Max defer window" hint="After this, a held bill is escalated to you" value={p.maxDeferDays} suffix="days" />
           </div>
         </div>
         <div className="card p-6">
-          <h2 className="text-[18px] text-ink">Swaps</h2>
-          <div className="mt-4 space-y-3 text-[15px]">
-            {["NGN>USD", "USD>NGN"].map((pair) => (
+          <h2 className="text-[18px] text-ink">Rebalancing</h2>
+          <p className="mt-1 text-sm text-muted">Which of your own wallets Bursar may swap between when one runs short. It never takes a wallet below its buffer.</p>
+          <fieldset className="mt-4 grid grid-cols-1 gap-3 text-[15px] sm:grid-cols-2">
+            <legend className="sr-only">Allowed currency pairs</legend>
+            {pairs.map((pair) => (
               <label key={pair} className="flex items-center gap-3">
                 <input type="checkbox" name={`pair_${pair}`} defaultChecked={p.allowedPairs.includes(pair)} className="h-4 w-4 accent-teal" />
                 <span className="text-ink">Allow {pair.replace(">", " to ")}</span>
               </label>
             ))}
-          </div>
+            {pairs.length === 0 && <p className="text-sm text-muted">Add a second wallet to allow swaps.</p>}
+          </fieldset>
           <Field name="maxRateDeviationPct" label="Max rate deviation" hint="Skip a swap if the rate is this much worse than the 7-day average" value={p.maxRateDeviationPct} suffix="%" />
         </div>
         <div className="card p-6">

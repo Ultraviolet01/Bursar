@@ -1,6 +1,6 @@
 // Pure. For each currency: projected = balance - reserved - sum(upcoming).
 import { addDays } from "../lib/dates";
-import { CURRENCIES, type Currency } from "../lib/money";
+import type { Currency } from "../lib/money";
 import type { PolicyConfig, WalletState } from "./types";
 
 export interface Outflow {
@@ -33,11 +33,12 @@ export interface ForecastInput {
   reserved?: Partial<Record<Currency, number>>;
 }
 
-export function forecast(input: ForecastInput): Record<Currency, CurrencyForecast> {
+/** One forecast per wallet the company holds. */
+export function forecast(input: ForecastInput): Partial<Record<Currency, CurrencyForecast>> {
   const end = addDays(input.today, input.horizonDays - 1);
-  const out = {} as Record<Currency, CurrencyForecast>;
+  const out: Partial<Record<Currency, CurrencyForecast>> = {};
 
-  for (const currency of CURRENCIES) {
+  for (const currency of input.wallets.map((w) => w.currency)) {
     const wallet = input.wallets.find((w) => w.currency === currency);
     const balance = wallet?.balance ?? 0;
     const buffer = input.policy.buffer[currency] ?? 0;

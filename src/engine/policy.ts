@@ -37,6 +37,9 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
   const checks: PolicyCheck[] = [];
   const add = (c: PolicyCheck) => checks.push(c);
   const bal = (c: Currency) => ctx.wallets.find((w) => w.currency === c)?.balance ?? 0;
+  const buf = (c: Currency) => policy.buffer[c] ?? 0;
+  const cap = (c: Currency) => policy.perPaymentCap[c] ?? 0;
+  const ngn = (m: number, c: Currency) => toNgn(m, c, market.rates);
 
   const kind = action.type === "ESCALATE" ? action.plan?.kind ?? "PAY" : action.type;
   const swap = action.type === "ESCALATE" ? action.plan?.swap : action.swap;
@@ -50,6 +53,14 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
   );
 
   if (hasSwap && swap) {
+    // Rebalancing only ever moves money between this company's own wallets.
+    const own = ctx.wallets.some((w) => w.currency === swap.from) && ctx.wallets.some((w) => w.currency === swap.to);
+    add({
+      id: "own_wallets",
+      label: "Between your own wallets",
+      status: own ? "pass" : "fail",
+      detail: own ? `${swap.from} and ${swap.to} wallets both belong to this business` : `This business has no ${ctx.wallets.some((w) => w.currency === swap.from) ? swap.to : swap.from} wallet`,
+    });
     const pairOk = pairAllowed(policy, swap.from, swap.to);
     add({
       id: "pair",
@@ -66,7 +77,7 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
       detail: `${dev <= 0 ? "Better than" : `${dev.toFixed(2)}% worse than`} the 7-day average (max ${policy.maxRateDeviationPct}%)`,
       reason: dev <= policy.maxRateDeviationPct ? undefined : "RATE_TOO_WIDE",
     });
-    const swapNgn = toNgn(swap.fromAmount, swap.from, market.usdNgn);
+    const swapNgn = ngn(swap.fromAmount, swap.from);
     add({
       id: "swap_cap",
       label: "Under swap cap",
@@ -81,8 +92,8 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
         : {
             id: "swap_buffer",
             label: `${swap.from} buffer kept`,
-            status: srcAfter >= policy.buffer[swap.from] ? "pass" : "needs_owner",
-            detail: `Ends at ${formatMoney(srcAfter, swap.from)}, buffer ${formatMoney(policy.buffer[swap.from], swap.from)}`,
+            status: srcAfter >= buf(swap.from) ? "pass" : "needs_owner",
+            detail: `Ends at ${formatMoney(srcAfter, swap.from)}, buffer ${formatMoney(buf(swap.from), swap.from)}`,
           },
     );
   }
@@ -99,15 +110,15 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
         reason: ctx.payee.allowlisted ? undefined : "NEW_PAYEE",
       });
     }
-    const capOk = action.amount <= policy.perPaymentCap[cur];
+    const capOk = action.amount <= cap(cur);
     add({
       id: "payment_cap",
       label: "Under per-payment cap",
       status: capOk ? "pass" : "needs_owner",
-      detail: `${formatMoney(action.amount, cur)} of ${formatMoney(policy.perPaymentCap[cur], cur)}`,
+      detail: `${formatMoney(action.amount, cur)} of ${formatMoney(cap(cur), cur)}`,
       reason: capOk ? undefined : "OVER_PAYMENT_CAP",
     });
-    const dayAfter = ctx.todaySpentNgn + toNgn(total, cur, market.usdNgn);
+    const dayAfter = ctx.todaySpentNgn + ngn(total, cur);
     const dayOk = dayAfter <= policy.dailyCapNgn;
     add({
       id: "daily_cap",
@@ -123,8 +134,8 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
         : {
             id: "buffer",
             label: `${cur} buffer kept`,
-            status: after >= policy.buffer[cur] ? "pass" : "needs_owner",
-            detail: `Ends at ${formatMoney(after, cur)}, buffer ${formatMoney(policy.buffer[cur], cur)}`,
+            status: after >= buf(cur) ? "pass" : "needs_owner",
+            detail: `Ends at ${formatMoney(after, cur)}, buffer ${formatMoney(buf(cur), cur)}`,
           },
     );
   }

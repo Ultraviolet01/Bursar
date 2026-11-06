@@ -1,13 +1,15 @@
-// The only place that calls swap() or payout(). Re-checks policy against live
-// balances first, so nothing can move money without passing evaluate().
+// The only place that calls swap() or payout(). For every action it:
+//   1. previews the fee and rate with Blaaiz,
+//   2. re-checks policy with live balances and the previewed numbers,
+//   3. executes, then writes ledger entries for every movement.
 import type { PrismaClient } from "@prisma/client";
 import type { BlaaizClient } from "../blaaiz/client";
 import { env } from "../lib/env";
-import { formatMoney } from "../lib/money";
+import { type Currency, formatMoney } from "../lib/money";
 import { audit, getCompany, loadPolicy, toPayeeInfo } from "../lib/repo";
 import { loadMarket, syncWallets, todaySpentNgn } from "./observe";
 import { evaluate, type PolicyResult } from "./policy";
-import type { ProposedAction } from "./types";
+import type { ProposedAction, SwapPlan } from "./types";
 
 export interface ExecuteOutcome {
   status: "EXECUTED" | "BLOCKED" | "FAILED" | "SKIPPED";
@@ -15,42 +17,53 @@ export interface ExecuteOutcome {
   policy?: PolicyResult;
 }
 
-export async function executeAction(
-  db: PrismaClient,
-  client: BlaaizClient,
-  actionId: string,
-  opts: { ownerApproved: boolean },
-): Promise<ExecuteOutcome> {
+type Entry = { currency: Currency; kind: string; amount: number; memo: string; paymentId?: string | null; blaaizTransactionId?: string | null };
+
+export async function writeLedger(db: PrismaClient, companyId: string, actionId: string | null, entries: Entry[]) {
+  if (!entries.length) return;
+  await db.ledgerEntry.createMany({
+    data: entries.map((e) => ({ companyId, actionId, currency: e.currency, kind: e.kind, amount: BigInt(e.amount), memo: e.memo, paymentId: e.paymentId ?? null, blaaizTransactionId: e.blaaizTransactionId ?? null })),
+  });
+}
+
+export async function executeAction(db: PrismaClient, client: BlaaizClient, actionId: string, opts: { ownerApproved: boolean }): Promise<ExecuteOutcome> {
   const action = await db.action.findUniqueOrThrow({ where: { id: actionId } });
   const companyId = action.companyId;
   const proposed = JSON.parse(action.payload) as ProposedAction;
   const kind = proposed.type === "ESCALATE" ? proposed.plan?.kind ?? "PAY" : proposed.type;
-  const swap = proposed.type === "ESCALATE" ? proposed.plan?.swap : proposed.swap;
+  let swap: SwapPlan | undefined = proposed.type === "ESCALATE" ? proposed.plan?.swap : proposed.swap;
   if (kind !== "PAY" && kind !== "SWAP" && kind !== "SWAP_THEN_PAY") {
     return { status: "SKIPPED", message: `${proposed.type} moves no money` };
   }
 
-  const payment = action.paymentId
-    ? await db.scheduledPayment.findUniqueOrThrow({ where: { id: action.paymentId }, include: { payee: true } })
-    : null;
+  const payment = action.paymentId ? await db.scheduledPayment.findUniqueOrThrow({ where: { id: action.paymentId }, include: { payee: true } }) : null;
 
   // Idempotency: one payout per payment occurrence.
   if (payment) {
-    const prior = await db.execution.findFirst({
-      where: { companyId, kind: "PAYOUT", idempotencyKey: payment.merchantReference, status: { not: "FAILED" } },
-    });
+    const prior = await db.execution.findFirst({ where: { companyId, kind: "PAYOUT", idempotencyKey: payment.merchantReference, status: { not: "FAILED" } } });
     if (prior || payment.status === "PAID" || payment.status === "EXECUTING") {
       await db.action.update({ where: { id: action.id }, data: { status: "SKIPPED", explanation: `${action.explanation} Skipped: this occurrence was already paid.` } });
       return { status: "SKIPPED", message: "Already paid for this occurrence" };
     }
   }
 
-  // Live re-check.
+  // 1. Preview fees and rate with Blaaiz before anything moves.
+  let payoutFee = proposed.fee;
+  if (swap) {
+    const q = await client.getFees({ kind: "swap", fromCurrency: swap.from, toCurrency: swap.to, toAmount: swap.toAmount });
+    swap = { ...swap, fromAmount: q.total, rate: q.rate ?? swap.rate };
+  }
+  if (kind !== "SWAP" && payment) {
+    const q = await client.getFees({ kind: "payout", fromCurrency: proposed.currency, toCurrency: proposed.currency, toAmount: proposed.amount });
+    payoutFee = q.fee;
+  }
+
+  // 2. Live re-check with the previewed numbers.
   const [company, policy] = await Promise.all([getCompany(db, companyId), loadPolicy(db, companyId)]);
   const wallets = await syncWallets(db, client, companyId);
   const market = await loadMarket(db, client, false);
-  const spent = await todaySpentNgn(db, companyId, market.usdNgn);
-  const live: ProposedAction = { ...proposed, type: kind, swap };
+  const spent = await todaySpentNgn(db, companyId, market.rates);
+  const live: ProposedAction = { ...proposed, type: kind, swap, fee: payoutFee };
   const result = evaluate(live, {
     policy,
     paused: company.paused,
@@ -69,6 +82,7 @@ export async function executeAction(
 
   const walletId = (c: string) => wallets.find((w) => w.currency === c)?.blaaizWalletId;
 
+  // 3. Execute.
   try {
     if (swap) {
       const key = `swap-${action.id}`;
@@ -76,7 +90,7 @@ export async function executeAction(
       if (!done) {
         const req = { fromWalletId: walletId(swap.from)!, toWalletId: walletId(swap.to)!, amount: swap.toAmount, amountType: "to" as const };
         const exec = await db.execution.create({
-          data: { companyId, actionId: action.id, kind: "SWAP", idempotencyKey: key, request: JSON.stringify(req), status: "PENDING" },
+          data: { companyId, actionId: action.id, kind: "SWAP", idempotencyKey: key, request: JSON.stringify({ ...req, _preview: { fromAmount: swap.fromAmount, rate: swap.rate } }), status: "PENDING" },
         });
         try {
           const res = await client.swap(req);
@@ -84,7 +98,12 @@ export async function executeAction(
             where: { id: exec.id },
             data: { response: JSON.stringify(res), blaaizTransactionId: res.transactionId, status: res.status === "FAILED" ? "FAILED" : "SUCCESSFUL" },
           });
-          await audit(db, companyId, "BURSAR", `Swapped ${formatMoney(res.fromAmount, swap.from)} to ${formatMoney(res.toAmount, swap.to)} at ${res.rate ?? swap.rate}`, "Action", action.id);
+          const memo = `Swap ${swap.from} to ${swap.to} at ${res.rate ?? swap.rate}`;
+          await writeLedger(db, companyId, action.id, [
+            { currency: swap.from, kind: "SWAP_OUT", amount: -res.fromAmount, memo, blaaizTransactionId: res.transactionId },
+            { currency: swap.to, kind: "SWAP_IN", amount: res.toAmount, memo, blaaizTransactionId: res.transactionId },
+          ]);
+          await audit(db, companyId, "BURSAR", `Swapped ${formatMoney(res.fromAmount, swap.from)} to ${formatMoney(res.toAmount, swap.to)} (previewed ${formatMoney(swap.fromAmount, swap.from)})`, "Action", action.id);
         } catch (e) {
           await db.execution.update({ where: { id: exec.id }, data: { status: "FAILED", response: JSON.stringify({ error: String(e) }) } });
           throw e;
@@ -93,7 +112,6 @@ export async function executeAction(
     }
 
     if (kind !== "SWAP" && payment) {
-      const fee = proposed.fee;
       const req = {
         walletId: walletId(payment.currency)!,
         customerId: company.blaaizCustomerId ?? env.customerId,
@@ -109,26 +127,17 @@ export async function executeAction(
         merchantReference: payment.merchantReference,
       };
       const exec = await db.execution.create({
-        data: {
-          companyId,
-          actionId: action.id,
-          kind: "PAYOUT",
-          idempotencyKey: payment.merchantReference,
-          request: JSON.stringify({ ...req, _fee: fee }),
-          status: "PENDING",
-        },
+        data: { companyId, actionId: action.id, kind: "PAYOUT", idempotencyKey: payment.merchantReference, request: JSON.stringify({ ...req, _fee: payoutFee }), status: "PENDING" },
       });
       try {
         const res = await client.payout(req);
-        await db.execution.update({
-          where: { id: exec.id },
-          data: { response: JSON.stringify(res), blaaizTransactionId: res.transactionId, status: "PROCESSING" },
-        });
-        await db.scheduledPayment.update({
-          where: { id: payment.id },
-          data: { status: "EXECUTING", blaaizTransactionId: res.transactionId },
-        });
-        await audit(db, companyId, "BURSAR", `Sent payout ${formatMoney(proposed.amount, proposed.currency)} to ${payment.payee.name}`, "Action", action.id);
+        await db.execution.update({ where: { id: exec.id }, data: { response: JSON.stringify(res), blaaizTransactionId: res.transactionId, status: "PROCESSING" } });
+        await db.scheduledPayment.update({ where: { id: payment.id }, data: { status: "EXECUTING", blaaizTransactionId: res.transactionId } });
+        await writeLedger(db, companyId, action.id, [
+          { currency: proposed.currency, kind: "PAYOUT", amount: -proposed.amount, memo: `Payout to ${payment.payee.name}`, paymentId: payment.id, blaaizTransactionId: res.transactionId },
+          ...(payoutFee ? [{ currency: proposed.currency, kind: "FEE", amount: -payoutFee, memo: `Blaaiz payout fee, ${payment.payee.name}`, paymentId: payment.id, blaaizTransactionId: res.transactionId }] : []),
+        ]);
+        await audit(db, companyId, "BURSAR", `Sent payout ${formatMoney(proposed.amount, proposed.currency)} to ${payment.payee.name} (fee ${formatMoney(payoutFee, proposed.currency)})`, "Action", action.id);
       } catch (e) {
         await db.execution.update({ where: { id: exec.id }, data: { status: "FAILED", response: JSON.stringify({ error: String(e) }) } });
         throw e;
@@ -136,7 +145,6 @@ export async function executeAction(
     }
 
     await db.action.update({ where: { id: action.id }, data: { status: "EXECUTED" } });
-    // Recorded when Blaaiz confirms; this is the live balance after debits.
     await syncWallets(db, client, companyId);
     return { status: "EXECUTED", message: "Done", policy: result };
   } catch (e) {

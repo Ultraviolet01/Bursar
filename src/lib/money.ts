@@ -1,9 +1,22 @@
-// All money is integer minor units (kobo for NGN, cents for USD).
-// NGN and USD both use 2 decimals, so converting between them is
-// minor * rate, where rate = NGN per 1 USD.
+// All money is integer minor units (kobo, cents, pence). Every supported currency
+// has 2 decimals, so converting is minor * rate. Rates are NGN per 1 unit of a
+// currency (NGN itself is 1), which gives every cross rate from one table.
 
-export type Currency = "NGN" | "USD";
-export const CURRENCIES: Currency[] = ["NGN", "USD"];
+export type Currency = "NGN" | "USD" | "EUR" | "GBP";
+export const CURRENCIES: Currency[] = ["NGN", "USD", "EUR", "GBP"];
+export const CURRENCY_NAME: Record<Currency, string> = { NGN: "Naira", USD: "US dollar", EUR: "Euro", GBP: "Pound sterling" };
+
+/** NGN per 1 unit of each currency. */
+export type Rates = Record<Currency, number>;
+
+export function isCurrency(v: unknown): v is Currency {
+  return typeof v === "string" && (CURRENCIES as string[]).includes(v);
+}
+
+export function parseCurrencies(list: string | null | undefined): Currency[] {
+  const out = (list ?? "NGN").split(",").map((s) => s.trim()).filter(isCurrency);
+  return CURRENCIES.filter((c) => out.includes(c) || c === "NGN");
+}
 
 export function toMinor(major: number | string): number {
   const s = typeof major === "number" ? major.toFixed(2) : major.trim().replace(/,/g, "");
@@ -26,15 +39,19 @@ export function formatMoney(minor: number, currency: Currency | string, opts: { 
   return `${currency} ${formatMinor(minor, opts)}`;
 }
 
-/** Convert minor units between NGN and USD at a mid rate (NGN per USD). */
-export function convert(minor: number, from: Currency, to: Currency, usdNgn: number): number {
+/** Convert minor units between currencies at mid rates. */
+export function convert(minor: number, from: Currency, to: Currency, rates: Rates): number {
   if (from === to) return minor;
-  if (from === "USD" && to === "NGN") return Math.round(minor * usdNgn);
-  return Math.round(minor / usdNgn);
+  return Math.round((minor * rates[from]) / rates[to]);
 }
 
-export function toNgn(minor: number, currency: Currency, usdNgn: number): number {
-  return convert(minor, currency, "NGN", usdNgn);
+export function toNgn(minor: number, currency: Currency, rates: Rates): number {
+  return Math.round(minor * rates[currency]);
+}
+
+/** Units of `source` paid for 1 unit of `target`. */
+export function crossRate(source: Currency, target: Currency, rates: Rates): number {
+  return rates[target] / rates[source];
 }
 
 /**
@@ -42,9 +59,13 @@ export function toNgn(minor: number, currency: Currency, usdNgn: number): number
  * including a percentage swap fee in basis points. Rounds up so we never
  * under-fund.
  */
-export function swapCostFor(toAmount: number, source: Currency, target: Currency, usdNgn: number, feeBps: number): number {
-  const gross = source === "NGN" && target === "USD" ? toAmount * usdNgn : toAmount / usdNgn;
-  return Math.ceil(gross * (1 + feeBps / 10_000));
+export function swapCostFor(toAmount: number, source: Currency, target: Currency, rates: Rates, feeBps: number): number {
+  return Math.ceil(toAmount * crossRate(source, target, rates) * (1 + feeBps / 10_000));
+}
+
+export function formatRate(source: Currency, target: Currency, rates: Rates): string {
+  const r = crossRate(source, target, rates);
+  return r >= 1 ? `${r.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${source} per ${target}` : `${(1 / r).toLocaleString("en-US", { maximumFractionDigits: 4 })} ${target} per ${source}`;
 }
 
 export const bn = (v: bigint | number | null | undefined): number => (v == null ? 0 : Number(v));
