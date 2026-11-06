@@ -1,0 +1,187 @@
+// Money is stored as BigInt in minor units (kobo, cents). Never floats.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Company {
+  id               String  @id @default(cuid())
+  name             String
+  baseCurrency     String  @default("NGN")
+  blaaizCustomerId String?
+  paused           Boolean @default(false)
+  createdAt        DateTime @default(now())
+}
+
+model Wallet {
+  id             String   @id @default(cuid())
+  blaaizWalletId String   @unique
+  currency       String   @unique
+  label          String
+  balance        BigInt
+  updatedAt      DateTime @updatedAt
+}
+
+model WalletSnapshot {
+  id             String   @id @default(cuid())
+  blaaizWalletId String
+  currency       String
+  balance        BigInt
+  takenAt        DateTime @default(now())
+  cycleId        String?
+}
+
+model RateSnapshot {
+  id        String   @id @default(cuid())
+  pair      String   // e.g. USDNGN = NGN per 1 USD
+  rate      Float    // a rate, not money
+  fetchedAt DateTime @default(now())
+}
+
+model Payee {
+  id            String   @id @default(cuid())
+  name          String
+  category      String   // PAYROLL | CRITICAL_VENDOR | SAAS | DOMAIN | VENDOR | UTILITY
+  currency      String
+  method        String   @default("bank_transfer") // bank_transfer | mobile_money
+  bankId        String?
+  bankName      String?
+  accountNumber String?
+  accountName   String?
+  phone         String?
+  operatorId    String?
+  allowlisted   Boolean  @default(false)
+  critical      Boolean  @default(false)
+  verifiedAt    DateTime?
+  createdAt     DateTime @default(now())
+  payments      ScheduledPayment[]
+}
+
+model ScheduledPayment {
+  id                String   @id @default(cuid())
+  payeeId           String
+  payee             Payee    @relation(fields: [payeeId], references: [id])
+  amount            BigInt
+  amountType        String   @default("to") // to | from
+  currency          String
+  dueDate           String   // YYYY-MM-DD
+  recurrence        String   @default("NONE") // NONE | WEEKLY | MONTHLY
+  priority          Int
+  critical          Boolean
+  status            String   @default("SCHEDULED") // SCHEDULED | DEFERRED | PROPOSED | EXECUTING | PAID | FAILED | CANCELLED
+  deferCount        Int      @default(0)
+  merchantReference String   @unique
+  memo              String?
+  blaaizTransactionId String?
+  paidAt            DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Policy {
+  id                  String  @id @default("default")
+  perPaymentCap       String  // JSON {"NGN": minor, "USD": minor}
+  dailyCapNgn         BigInt
+  perSwapCapNgn       BigInt
+  buffer              String  // JSON {"NGN": minor, "USD": minor}
+  allowedPairs        String  // comma list, e.g. "NGN>USD,USD>NGN"
+  maxRateDeviationPct Float
+  horizonDays         Int
+  maxDeferDays        Int
+  autoExecute         Boolean
+  updatedAt           DateTime @updatedAt
+}
+
+model Cycle {
+  id         String    @id @default(cuid())
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  trigger    String    // SCHEDULE | MANUAL | WEBHOOK
+  summary    String?
+  error      String?
+  actions    Action[]
+}
+
+model Action {
+  id           String   @id @default(cuid())
+  number       Int      @unique
+  cycleId      String?
+  cycle        Cycle?   @relation(fields: [cycleId], references: [id])
+  type         String   // PAY | SWAP | SWAP_THEN_PAY | DEFER | ESCALATE | HOLD
+  paymentId    String?
+  payload      String   // JSON
+  reasonCode   String
+  explanation  String
+  policyResult String   // JSON
+  status       String   // PENDING | APPROVED | REJECTED | EXECUTED | FAILED | SKIPPED
+  auto         Boolean  @default(false)
+  decidedBy    String?  // BURSAR | OWNER
+  decidedAt    DateTime?
+  createdAt    DateTime @default(now())
+  executions   Execution[]
+}
+
+model Execution {
+  id                  String   @id @default(cuid())
+  actionId            String
+  action              Action   @relation(fields: [actionId], references: [id])
+  kind                String   // SWAP | PAYOUT
+  idempotencyKey      String
+  request             String   // JSON
+  response            String?  // JSON
+  blaaizTransactionId String?
+  status              String   // PENDING | PROCESSING | SUCCESSFUL | FAILED
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([idempotencyKey])
+}
+
+model WebhookEvent {
+  id                   String    @id @default(cuid())
+  eventType            String
+  rawBody              String
+  signatureValid       Boolean
+  dedupeKey            String?
+  processedAt          DateTime?
+  relatedTransactionId String?
+  note                 String?
+  receivedAt           DateTime  @default(now())
+
+  @@index([dedupeKey])
+}
+
+model AuditLog {
+  id      String   @id @default(cuid())
+  at      DateTime @default(now())
+  actor   String   // BURSAR | OWNER | BLAAIZ
+  message String
+  refType String?
+  refId   String?
+}
+
+// Mock-mode Blaaiz state. Only src/blaaiz/mock.ts touches these tables.
+model MockWallet {
+  id       String @id
+  currency String @unique
+  balance  BigInt
+}
+
+model MockTransaction {
+  id                String   @id
+  type              String   // payout | swap | collection
+  status            String
+  currency          String
+  amount            BigInt
+  fee               BigInt
+  rate              Float?
+  walletId          String
+  merchantReference String?
+  payload           String
+  createdAt         DateTime @default(now())
+}
