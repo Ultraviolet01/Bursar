@@ -25,6 +25,25 @@ npm run dev
 
 Mock mode is the default and needs no Blaaiz credentials. Balances, rates, payouts and signed webhooks are all simulated.
 
+## Deploying on Vercel
+
+Live demo: https://bursar-beta.vercel.app (mock mode; demo login `founder@bursar.demo` / `bursar-demo`).
+
+- Production uses Postgres, because Vercel functions have no persistent disk. Add **Neon** from the project's Storage tab; it sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+- `npm run vercel-build` (which Vercel runs automatically):
+  - Generates a Postgres version of the Prisma schema and pushes it.
+  - Seeds the demo only on an empty database.
+  - Builds the app.
+- Local development and tests keep SQLite.
+- Environment variables to set:
+  - `BLAAIZ_MODE`, `APP_URL`.
+  - `BURSAR_SECRET_KEY`, `CRON_SECRET`, `BLAAIZ_WEBHOOK_SECRET`: random, 32+ characters each.
+  - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+  - Optional: `RESEND_API_KEY`, `EMAIL_FROM`.
+- `vercel.json` runs a cycle once a day, the Hobby plan's limit. On Pro, change the schedule to `*/10 * * * *`.
+- Cycles also run on every new bill, deposit, approval and manual run.
+- Add `<APP_URL>/auth/google/callback` to the Google OAuth client's redirect URIs.
+
 ## How founders sign up
 
 Any email works: Gmail, Outlook, a company domain. There are three ways in, and all of them land on the same account when the email matches.
