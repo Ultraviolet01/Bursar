@@ -43,6 +43,19 @@ Live demo: https://bursar-beta.vercel.app (mock mode; sign in with Google).
 - Cycles also run on every new bill, deposit, approval and manual run.
 - Add `<APP_URL>/auth/google/callback` to the Google OAuth client's redirect URIs.
 
+## Walkthrough video
+
+[docs/bursar-walkthrough.mp4](docs/bursar-walkthrough.mp4) is 2.5 minutes long. It shows:
+- The landing page.
+- Google sign-in.
+- Onboarding, with automatic Blaaiz setup.
+- A cycle with a rebalance, and approving a proposal.
+- Activity, and the Excel export.
+- Wallets and Rules.
+- A second company, and dark mode.
+
+To re-record it, run `node scripts/record-walkthrough.mjs <outDir>` against a local server started with `ENABLE_TEST_LOGIN=1`. It wipes the local database first.
+
 ## Export to Excel
 
 **Export to Excel** (on Overview and Activity) downloads a workbook for the active company with five sheets:
