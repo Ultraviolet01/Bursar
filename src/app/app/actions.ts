@@ -2,6 +2,8 @@
 // Server actions behind every dashboard button. Each one resolves the signed-in
 // founder's active company and only touches records that belong to it.
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { appUrl } from "@/lib/google";
 import { redirect } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -390,14 +392,32 @@ export async function addCompany(formData: FormData) {
     .parse(Object.fromEntries(formData));
   const currencies = CURRENCIES.filter((c) => c === "NGN" || formData.get(`cur_${c}`) === "on");
   const opening = Object.fromEntries(currencies.map((c) => [c, Number(formData.get(`opening_${c}`) ?? 0) || 0]));
+  const str = (k: string) => String(formData.get(k) ?? "").trim() || undefined;
+  const blaaiz = env.mode === "live" ? { clientId: str("blaaizClientId"), clientSecret: str("blaaizClientSecret"), webhookSecret: str("blaaizWebhookSecret"), customerId: str("blaaizCustomerId") } : undefined;
+  const h = await headers();
+  const baseUrl = appUrl(h.get("x-forwarded-host") ?? h.get("host"), h.get("x-forwarded-proto"));
   const company =
     f.demo === "on"
       ? await createDemoCompany(db, session.userId, f.name)
-      : await createCompany(db, { ownerId: session.userId, name: f.name, currencies, opening });
+      : await createCompany(db, { ownerId: session.userId, name: f.name, currencies, opening, blaaiz, baseUrl });
   await setActiveCompany(session.id, company.id);
-  await setFlash(`${company.name} is ready.`);
+  const setup = (company as { setup?: { ok: boolean; steps: { step: string; ok: boolean }[] } }).setup;
+  if (setup && !setup.ok) {
+    await setFlash(`${company.name} was added, but Blaaiz setup needs attention: ${setup.steps.filter((x) => !x.ok).map((x) => x.step).join(", ")}. See Settings.`, "amber");
+  } else {
+    await setFlash(`${company.name} is ready: wallets, funding account and webhooks are set up.`);
+  }
   revalidatePath("/app", "layout");
   redirect("/app");
+}
+
+export async function reconnectBlaaiz() {
+  const { company } = await requireCompany();
+  const { connectBlaaiz } = await import("@/blaaiz/connect");
+  const h = await headers();
+  const res = await connectBlaaiz(db, company.id, appUrl(h.get("x-forwarded-host") ?? h.get("host"), h.get("x-forwarded-proto")));
+  await setFlash(res.ok ? "Blaaiz setup complete." : `Blaaiz setup needs attention: ${res.steps.filter((x) => !x.ok).map((x) => `${x.step} (${x.detail})`).join("; ")}`, res.ok ? "good" : "amber");
+  done();
 }
 
 export async function signOut() {

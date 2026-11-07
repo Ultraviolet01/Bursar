@@ -16,7 +16,7 @@ npm run dev
 ```
 
 - Landing page: http://localhost:3000
-- Sign in: http://localhost:3000/signin with `founder@bursar.demo` / `bursar-demo` (demo seed only).
+- Sign in: http://localhost:3000/signin. Without Google keys, set `ENABLE_TEST_LOGIN=1` and use the local test sign-in with `founder@bursar.demo` (the demo seed).
   - This founder runs two companies: Kaduna Freight Ltd and Ilorin Agro Foods.
 - Or create your own account at `/signup`. Onboarding asks for your first company.
 - Optional scheduler (every 10 minutes by default): `npm run worker`
@@ -39,10 +39,20 @@ Live demo: https://bursar-beta.vercel.app (mock mode; sign in with Google).
   - `BLAAIZ_MODE`, `APP_URL`.
   - `BURSAR_SECRET_KEY`, `CRON_SECRET`, `BLAAIZ_WEBHOOK_SECRET`: random, 32+ characters each.
   - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
-  - Optional: `RESEND_API_KEY`, `EMAIL_FROM`.
 - `vercel.json` runs a cycle once a day, the Hobby plan's limit. On Pro, change the schedule to `*/10 * * * *`.
 - Cycles also run on every new bill, deposit, approval and manual run.
 - Add `<APP_URL>/auth/google/callback` to the Google OAuth client's redirect URIs.
+
+## Export to Excel
+
+**Export to Excel** (on Overview and Activity) downloads a workbook for the active company with five sheets:
+- **Summary:** balances, total treasury, counts and rules.
+- **Activity:** every decision, with its rule, outcome and Blaaiz reference.
+- **Payments.**
+- **Ledger.**
+- **Wallets.**
+
+Headers are styled and frozen, money columns are formatted, and every sheet has filters. `?format=csv` still gives the activity as CSV.
 
 ## How founders sign up
 
@@ -214,6 +224,8 @@ Sign in -> last active company -> switch or add companies from the sidebar -> Si
 
 ## Live sandbox
 
+See [docs/GOING_LIVE.md](docs/GOING_LIVE.md) for the full checklist. Run `npm run blaaiz:check` to test the keys read-only.
+
 1. Set `BLAAIZ_MODE=live` and `BURSAR_SECRET_KEY` (32+ random characters) in `.env`.
 2. For each company, open **Settings**. Enter that business's Blaaiz customer ID, OAuth client ID, client secret and webhook signing secret.
    - Secrets are encrypted with AES-256-GCM and never shown again.
@@ -228,7 +240,7 @@ Blaaiz only gives API access to registered businesses, so the live path compiles
 - Sessions are random 32-byte tokens in an httpOnly cookie. Only their SHA-256 is stored.
 - Every server action and API route resolves the signed-in founder's own company and only reads or writes records that belong to it.
 - Webhooks are verified per company (HMAC-SHA256 over `timestamp.body`). They are stored raw before processing and de-duplicated.
-- Not done yet: rate limiting on sign in, email verification, password reset, and inviting teammates to a company.
+- Not done yet: inviting teammates to a company.
 
 ## How it is built
 

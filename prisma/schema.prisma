@@ -67,6 +67,9 @@ model Company {
   blaaizClientSecretEnc String?
   blaaizWebhookSecretEnc String?
   paused           Boolean @default(false)
+  // Last automatic Blaaiz setup (wallet discovery, funding account, webhooks).
+  blaaizConnectedAt DateTime?
+  blaaizConnectNote String?
   createdAt        DateTime @default(now())
 }
 

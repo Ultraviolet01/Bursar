@@ -6,10 +6,13 @@ import { requireCompany } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { dateTime } from "@/lib/dates";
-import { saveAccount, saveCompanySettings, sendTestWebhook } from "../actions";
+import { reconnectBlaaiz, saveAccount, saveCompanySettings, sendTestWebhook } from "../actions";
+import { getBlaaiz } from "@/blaaiz";
+import type { DiagnosticCheck } from "@/blaaiz/client";
 import { googleEnabled } from "@/lib/google";
 
-export default async function Settings() {
+export default async function Settings({ searchParams }: { searchParams: Promise<{ check?: string }> }) {
+  const { check } = await searchParams;
   const { company, companies, user } = await requireCompany();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
@@ -17,6 +20,14 @@ export default async function Settings() {
   const lastHook = await db.webhookEvent.findFirst({ where: { companyId: company.id }, orderBy: { receivedAt: "desc" } });
   const live = env.mode === "live";
   const hasKey = (process.env.BURSAR_SECRET_KEY ?? "").length >= 32;
+  let checks: DiagnosticCheck[] | null = null;
+  if (check === "1") {
+    try {
+      checks = await (await getBlaaiz(company.id)).diagnose();
+    } catch (e) {
+      checks = [{ name: "Connection", ok: false, detail: String(e instanceof Error ? e.message : e) }];
+    }
+  }
   const configured = !live || (!!(company.blaaizClientId || env.clientId) && !!(company.blaaizClientSecretEnc || env.clientSecret));
 
   return (
@@ -32,6 +43,47 @@ export default async function Settings() {
             <Row label="Customer for payouts" value={<span className="font-mono text-sm">{company.blaaizCustomerId ?? "Not set"}</span>} />
           </div>
           <p className="mt-4 text-sm text-muted">Switch modes with <code className="font-mono">BLAAIZ_MODE</code> in <code className="font-mono">.env</code> and restart. Engine code is identical in both modes.</p>
+        </div>
+
+        <div className="card p-6 xl:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-[18px] text-ink">Blaaiz setup</h2>
+            <div className="flex flex-wrap gap-2">
+              <form action={reconnectBlaaiz}><SubmitButton className="btn-outline btn-sm" pendingText="Setting up">Run Blaaiz setup again</SubmitButton></form>
+              <a href="/app/settings?check=1" className="btn-outline btn-sm">Test Blaaiz connection</a>
+            </div>
+          </div>
+          <p className="mt-1 text-sm text-muted">Runs automatically when a company is added: finds the business&apos;s wallets, creates the NGN funding account and registers Bursar&apos;s webhook. Blaaiz creates wallets with the business account; its API cannot create them.</p>
+          {company.blaaizConnectNote ? (
+            <ul className="mt-4 space-y-1.5 text-[15px]">
+              {company.blaaizConnectNote.split("\n").map((line) => {
+                const ok = line.startsWith("OK ");
+                return (
+                  <li key={line} className="flex gap-2 [overflow-wrap:anywhere]">
+                    <Pill tone={ok ? "good" : "amber"}>{ok ? "Done" : "Needs attention"}</Pill>
+                    <span className="text-body">{line.replace(/^(OK|FAILED) /, "")}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="mt-4 text-[15px] text-muted">Not run yet for this company.</p>
+          )}
+          {checks && (
+            <div className="mt-5 border-t border-line pt-4">
+              <div className="text-[15px] font-medium text-ink">Connection test {checks.every((c) => c.ok) ? "passed" : "found problems"}</div>
+              <p className="text-sm text-muted">Read-only calls. Nothing is paid or swapped.</p>
+              <ul className="mt-3 divide-y divide-line">
+                {checks.map((c) => (
+                  <li key={c.name} className="py-2.5 text-[15px] [overflow-wrap:anywhere]">
+                    <div className="flex items-center gap-2"><Pill tone={c.ok ? "good" : "bad"}>{c.ok ? "Pass" : "Fail"}</Pill><span className="text-ink">{c.name}</span></div>
+                    <div className="mt-1 text-sm text-body">{c.detail}</div>
+                    {c.fields && c.fields.length > 0 && <div className="mt-0.5 font-mono text-xs text-muted">fields: {c.fields.join(", ")}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         <div className="card p-6">

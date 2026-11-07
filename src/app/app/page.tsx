@@ -38,7 +38,7 @@ export default async function Overview() {
   const allowlisted = payees.filter((p) => p.allowlisted);
   const registered = allowlisted.filter((p) => p.blaaizCustomerId).length;
   const steps = [
-    { done: t.currencies.length > 1, title: "Create your currency wallets", sub: `${t.currencies.join(", ")}${mode === "mock" ? " (mock)" : " on Blaaiz"}`, href: "/app/wallets" },
+    { done: !!company?.blaaizConnectedAt && t.currencies.length > 0, title: "Blaaiz wallets connected", sub: company?.blaaizConnectedAt ? `${t.currencies.join(", ")}, set up automatically` : "Bursar sets this up when you add the company; retry in Settings", href: "/app/settings" },
     { done: allowlisted.length > 0 && registered === allowlisted.length, title: "Register payees with Blaaiz", sub: allowlisted.length ? `${registered} of ${allowlisted.length} allowlisted payees are Blaaiz customers` : "Add employees and key vendors, then allowlist them", href: "/app/payees" },
     { done: !!ngnWallet?.vaAccountNumber && Number(ngnWallet.balance) > 0, title: "Fund NGN by bank transfer", sub: ngnWallet?.vaAccountNumber ? `${ngnWallet.vaBankName} ${ngnWallet.vaAccountNumber}` : "Create the NGN wallet's funding account", href: "/app/wallets?c=NGN" },
     { done: foreign.length > 0 && foreign.every((c) => t.fc[c].balance > 0), title: "Swap into your other currencies", sub: foreign.length ? foreign.map((c) => `${c} ${formatMinor(t.fc[c].balance, { decimals: false })}`).join(", ") : "Add a USD, EUR or GBP wallet first", href: `/app/wallets?c=${foreign[0] ?? "NGN"}` },
@@ -49,7 +49,7 @@ export default async function Overview() {
   return (
     <>
       <PageHeader title="Overview" subtitle={`${longToday()}, ${pending === 0 ? "nothing needs you" : `${pending} item${pending > 1 ? "s" : ""} need${pending > 1 ? "" : "s"} you`}`}>
-        <a href="/api/export" className="btn-outline">Export</a>
+        <a href="/api/export" className="btn-outline" download>Export to Excel</a>
         <form action={runCycleAction}>
           <SubmitButton pendingText="Running cycle">Run cycle</SubmitButton>
         </form>

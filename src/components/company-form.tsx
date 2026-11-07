@@ -28,8 +28,22 @@ export function CompanyForm({ action, mock, first, onboarding = false }: { actio
             </div>
           ))}
         </div>
-        {mock ? <p className="text-sm text-muted">Mock mode: the numbers are opening balances. In live mode Bursar reads real balances from Blaaiz.</p> : <p className="text-sm text-muted">In live mode, create these wallets in Blaaiz; Bursar uses the ones Blaaiz returns.</p>}
+        {mock ? (
+          <p className="text-sm text-muted">Mock mode: Bursar creates these wallets for you. The numbers are opening balances.</p>
+        ) : (
+          <p className="text-sm text-muted">Live mode: Bursar finds the wallets on your Blaaiz business account automatically and uses those.</p>
+        )}
       </fieldset>
+      {!mock && (
+        <fieldset className="space-y-3 rounded-xl bg-canvas p-4">
+          <legend className="px-1 text-[15px] text-ink">Connect this business&apos;s Blaaiz account</legend>
+          <p className="text-sm text-muted">From the Blaaiz dashboard, API &amp; Webhooks. Bursar then finds your wallets, creates the NGN funding account and registers its webhook. Secrets are encrypted and never shown again.</p>
+          <div><label htmlFor="blaaizClientId" className="label">OAuth client ID</label><input id="blaaizClientId" name="blaaizClientId" className="input font-mono" autoComplete="off" /></div>
+          <div><label htmlFor="blaaizClientSecret" className="label">OAuth client secret</label><input id="blaaizClientSecret" name="blaaizClientSecret" type="password" className="input font-mono" autoComplete="new-password" /></div>
+          <div><label htmlFor="blaaizWebhookSecret" className="label">Webhook signing secret</label><input id="blaaizWebhookSecret" name="blaaizWebhookSecret" type="password" className="input font-mono" autoComplete="new-password" /></div>
+          <div><label htmlFor="blaaizCustomerId" className="label">Verified business customer ID (for payouts)</label><input id="blaaizCustomerId" name="blaaizCustomerId" className="input font-mono" autoComplete="off" /></div>
+        </fieldset>
+      )}
       {mock && (
         <label className="flex items-start gap-3 rounded-xl bg-canvas p-4 text-[15px]">
           <input type="checkbox" name="demo" className="mt-1 h-4 w-4 accent-teal" />

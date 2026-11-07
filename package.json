@@ -17,7 +17,8 @@
     "worker": "tsx worker.ts",
     "cycle": "tsx scripts/run-cycle.ts",
     "vercel-build": "node scripts/use-postgres.mjs && prisma generate --schema prisma/schema.postgres.prisma && prisma db push --skip-generate --schema prisma/schema.postgres.prisma && tsx scripts/seed-if-empty.ts && next build",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "blaaiz:check": "tsx scripts/blaaiz-check.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -25,6 +26,7 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "blaaiz-nodejs-sdk": "^1.7.0",
+    "exceljs": "^4.4.0",
     "next": "^15.5.29",
     "node-cron": "^3.0.3",
     "react": "^19.1.10",

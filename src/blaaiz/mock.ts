@@ -7,6 +7,7 @@ import { signWebhook, verifyWebhookSignature } from "./signature";
 import type {
   BlaaizClient,
   CustomerRequest,
+  DiagnosticCheck,
   VirtualAccount,
   FeeQuery,
   FeeQuote,
@@ -236,6 +237,20 @@ export class MockBlaaizClient implements BlaaizClient {
     // Deterministic 10-digit number per wallet, so it looks stable across reloads.
     const digits = [...w.id].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 9_000_000_000, 7) + 1_000_000_000;
     return { id: `mock_vba_${w.id}`, accountNumber: String(digits), accountName: accountName ?? "Bursar business wallet", bankName: "Blaaiz Mock Bank" };
+  }
+
+  async registerWebhooks(): Promise<void> {
+    // The mock delivers webhooks in-process; nothing to register.
+  }
+
+  async diagnose(): Promise<DiagnosticCheck[]> {
+    const wallets = await this.listWallets();
+    return [
+      { name: "Connection", ok: true, detail: "In-process mock, no network" },
+      { name: "Wallets", ok: wallets.length > 0, detail: wallets.map((w) => w.currency).join(", ") || "none" },
+      { name: "Rates", ok: true, detail: "Simulated NGN rates for USD, EUR, GBP" },
+      { name: "Fees", ok: true, detail: "Payout flat fee, 0.5% swap fee" },
+    ];
   }
 
   /** Mock only: adds a wallet (live wallets are created in the Blaaiz dashboard). */

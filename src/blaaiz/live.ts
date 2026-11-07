@@ -6,6 +6,7 @@ import { CURRENCIES, isCurrency, toMinor, type Currency } from "../lib/money";
 import type {
   BlaaizClient,
   CustomerRequest,
+  DiagnosticCheck,
   VirtualAccount,
   FeeQuery,
   FeeQuote,
@@ -208,6 +209,60 @@ export class LiveBlaaizClient implements BlaaizClient {
       unwrap(await this.sdk.virtualBankAccounts.create({ wallet_id: walletId, account_name: accountName })),
     );
     return { id: v.id, accountNumber: v.account_number, accountName: v.account_name, bankName: v.bank_name };
+  }
+
+  async registerWebhooks(url: string): Promise<void> {
+    const data = { collection_url: url, payout_url: url };
+    const existing = unwrap(await this.sdk.webhooks.get().catch(() => ({ data: null }))) as Record<string, unknown> | null;
+    const id = existing && (existing.id ?? (Array.isArray(existing) ? (existing[0] as Record<string, unknown>)?.id : undefined));
+    if (id) await this.sdk.webhooks.update(String(id), data);
+    else await this.sdk.webhooks.register(data);
+  }
+
+  /** Calls every read-only endpoint Bursar uses and reports what came back. Never moves money. */
+  async diagnose(): Promise<DiagnosticCheck[]> {
+    const out: DiagnosticCheck[] = [];
+    const fieldsOf = (v: unknown) => {
+      const row = Array.isArray(v) ? v[0] : v;
+      return row && typeof row === "object" ? Object.keys(row as object).slice(0, 15) : [];
+    };
+    const run = async (name: string, fn: () => Promise<{ detail: string; raw?: unknown }>) => {
+      try {
+        const r = await fn();
+        out.push({ name, ok: true, detail: r.detail, fields: r.raw === undefined ? undefined : fieldsOf(r.raw) });
+      } catch (e) {
+        out.push({ name, ok: false, detail: String(e instanceof Error ? e.message : e).slice(0, 200) });
+      }
+    };
+    await run("OAuth token", async () => ({ detail: (await this.sdk.testConnection()) ? "Token issued" : "No token" }));
+    await run("Wallets", async () => {
+      const raw = unwrap(await this.sdk.wallets.list());
+      const w = await this.listWallets();
+      return { detail: w.map((x) => `${x.currency} ${(x.balance / 100).toFixed(2)}`).join(", ") || "No NGN/USD/EUR/GBP wallets", raw };
+    });
+    await run("Rates", async () => {
+      const raw = unwrap(await this.sdk.rates.list({}));
+      const r = await this.listRates();
+      return { detail: r.map((x) => `${x.from}/NGN ${x.rate}`).join(", "), raw };
+    });
+    await run("Fee preview", async () => {
+      const q = await this.getFees({ kind: "payout", fromCurrency: "NGN", toCurrency: "NGN", toAmount: 1_000_00 });
+      return { detail: `NGN 1,000 payout: fee ${(q.fee / 100).toFixed(2)}, total ${(q.total / 100).toFixed(2)}` };
+    });
+    await run("Currencies", async () => {
+      const raw = unwrap(await this.sdk.currencies.list());
+      return { detail: `${Array.isArray(raw) ? raw.length : "?"} currencies`, raw };
+    });
+    await run("Banks (NGN)", async () => {
+      const raw = unwrap(await this.sdk.banks.list({ currency: "NGN" }));
+      return { detail: `${Array.isArray(raw) ? raw.length : "?"} banks`, raw };
+    });
+    await run("Webhook settings", async () => {
+      const raw = unwrap(await this.sdk.webhooks.get());
+      return { detail: raw ? "Registered" : "Not registered yet", raw };
+    });
+    await run("Transactions", async () => ({ detail: `${(await this.listTransactions({ page: 1 })).length} on page 1` }));
+    return out;
   }
 
   verifyWebhook(rawBody: string, signature: string, timestamp: string): boolean {

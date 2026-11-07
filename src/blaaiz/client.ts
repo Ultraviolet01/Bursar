@@ -119,4 +119,16 @@ export interface BlaaizClient {
   createCustomer(req: CustomerRequest): Promise<{ id: string }>;
   /** Setup: a bank account that funds the given wallet by transfer (NGN). */
   createVirtualAccount(walletId: string, accountName?: string): Promise<VirtualAccount>;
+  /** Setup: point Blaaiz's payout and collection webhooks at Bursar. */
+  registerWebhooks(url: string): Promise<void>;
+  /** Read-only checks of every Blaaiz call Bursar relies on. */
+  diagnose(): Promise<DiagnosticCheck[]>;
+}
+
+export interface DiagnosticCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+  /** Field names seen in the response, to confirm unverified shapes. */
+  fields?: string[];
 }

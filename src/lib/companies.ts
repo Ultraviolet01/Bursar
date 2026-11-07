@@ -17,6 +17,10 @@ export interface NewCompany {
   currencies?: Currency[];
   /** Mock mode only: opening balances in major units. */
   opening?: Partial<Record<Currency, number>>;
+  /** Live mode: this business's Blaaiz credentials (secrets are encrypted at rest). */
+  blaaiz?: { clientId?: string; clientSecret?: string; webhookSecret?: string; customerId?: string };
+  /** Public base URL, used to register Bursar's webhook with Blaaiz. */
+  baseUrl?: string | null;
 }
 
 export async function createCompany(db: PrismaClient, input: NewCompany) {
@@ -33,9 +37,24 @@ export async function createCompany(db: PrismaClient, input: NewCompany) {
       await db.wallet.create({ data: { companyId: company.id, blaaizWalletId: id, currency, label: `${currency} wallet`, balance } });
     }
   }
+  if (input.blaaiz) {
+    const { encryptSecret } = await import("./crypto");
+    await db.company.update({
+      where: { id: company.id },
+      data: {
+        blaaizClientId: input.blaaiz.clientId || null,
+        blaaizCustomerId: input.blaaiz.customerId || company.blaaizCustomerId,
+        blaaizClientSecretEnc: input.blaaiz.clientSecret ? encryptSecret(input.blaaiz.clientSecret) : null,
+        blaaizWebhookSecretEnc: input.blaaiz.webhookSecret ? encryptSecret(input.blaaiz.webhookSecret) : null,
+      },
+    });
+  }
   await seedRateHistory(db);
   await audit(db, company.id, "OWNER", `Created ${company.name}`, "Company", company.id);
-  return company;
+  // Automatic Blaaiz setup: discover wallets, funding account, webhooks.
+  const { connectBlaaiz } = await import("../blaaiz/connect");
+  const setup = await connectBlaaiz(db, company.id, input.baseUrl);
+  return Object.assign(company, { setup });
 }
 
 /** A week of USD/NGN history so the 7-day average is meaningful from the first cycle. */

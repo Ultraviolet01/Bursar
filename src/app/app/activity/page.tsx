@@ -70,7 +70,8 @@ export default async function Activity({ searchParams }: { searchParams: Promise
   return (
     <>
       <PageHeader title="Activity" subtitle="Every move, the rule it checked, and its Blaaiz reference">
-        <a href="/api/export" className="btn-outline">Export CSV</a>
+        <a href="/api/export" className="btn-outline" download>Export to Excel</a>
+        <a href="/api/export?format=csv" className="btn-outline" download>CSV</a>
       </PageHeader>
 
       <div className="stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
