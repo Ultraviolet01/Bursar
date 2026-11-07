@@ -6,7 +6,7 @@ import { requireCompany } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { dateTime } from "@/lib/dates";
-import { changePassword, saveAccount, saveCompanySettings, sendTestWebhook } from "../actions";
+import { saveAccount, saveCompanySettings, sendTestWebhook } from "../actions";
 import { googleEnabled } from "@/lib/google";
 
 export default async function Settings() {
@@ -80,9 +80,8 @@ export default async function Settings() {
         <div className="card space-y-5 p-6">
           <h2 className="text-[18px] text-ink">Your account</h2>
           <div>
-            <Row label="Email" value={<span>{user.email} {user.emailVerifiedAt ? <Pill tone="good">Confirmed</Pill> : <Pill tone="amber">Not confirmed</Pill>}</span>} />
-            <Row label="Google" value={user.googleSub ? "Linked" : googleEnabled() ? "Not linked. Use Continue with Google once to link it." : "Not set up on this server"} />
-            <Row label="Password" value={user.passwordHash ? "Set" : "Not set (you sign in with Google or email links)"} />
+            <Row label="Email" value={user.email} />
+            <Row label="Signs in with" value={user.googleSub ? "Google" : googleEnabled() ? "Google (linked on next sign-in)" : "Test sign-in"} />
           </div>
           <form action={saveAccount} className="flex items-end gap-2">
             <div className="flex-1">
@@ -90,20 +89,6 @@ export default async function Settings() {
               <input id="acct-name" name="name" defaultValue={user.name} required minLength={2} className="input" autoComplete="name" />
             </div>
             <SubmitButton className="btn-outline" pendingText="Saving">Save</SubmitButton>
-          </form>
-          <form action={changePassword} className="space-y-3 border-t border-line pt-4">
-            <div className="text-[15px] text-ink">{user.passwordHash ? "Change password" : "Set a password"}</div>
-            {user.passwordHash && (
-              <div>
-                <label htmlFor="cur-pw" className="label">Current password</label>
-                <input id="cur-pw" name="currentPassword" type="password" autoComplete="current-password" required className="input" />
-              </div>
-            )}
-            <div>
-              <label htmlFor="new-pw" className="label">New password</label>
-              <input id="new-pw" name="newPassword" type="password" autoComplete="new-password" minLength={8} required className="input" />
-            </div>
-            <SubmitButton className="btn-outline" pendingText="Saving">{user.passwordHash ? "Change password" : "Set password"}</SubmitButton>
           </form>
         </div>
 

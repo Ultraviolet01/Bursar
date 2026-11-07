@@ -407,42 +407,10 @@ export async function signOut() {
 
 // ---- Account ----
 
-export async function resendVerification() {
-  const session = await requireUser();
-  if (session.user.emailVerifiedAt) return;
-  const { sendVerification } = await import("../(auth)/actions");
-  try {
-    await sendVerification(session.user.id, session.user.email, session.user.name);
-    await setFlash(`Confirmation link sent to ${session.user.email}.`, "teal");
-  } catch (e) {
-    await setFlash(String(e).replace(/^Error: /, ""), "amber");
-  }
-  revalidatePath("/app", "layout");
-}
-
 export async function saveAccount(formData: FormData) {
   const session = await requireUser();
   const name = z.string().trim().min(2).parse(formData.get("name"));
   await db.user.update({ where: { id: session.userId }, data: { name } });
   await setFlash("Name saved.");
-  revalidatePath("/app", "layout");
-}
-
-export async function changePassword(formData: FormData) {
-  const session = await requireUser();
-  const { verifyPassword, hashPassword } = await import("@/lib/crypto");
-  const next = String(formData.get("newPassword") ?? "");
-  if (next.length < 8) {
-    await setFlash("Use at least 8 characters for your password.", "bad");
-    return revalidatePath("/app", "layout");
-  }
-  if (session.user.passwordHash && !verifyPassword(String(formData.get("currentPassword") ?? ""), session.user.passwordHash)) {
-    await setFlash("Your current password is not right.", "bad");
-    return revalidatePath("/app", "layout");
-  }
-  await db.user.update({ where: { id: session.userId }, data: { passwordHash: hashPassword(next) } });
-  // Keep this device signed in; sign out the others.
-  await db.session.deleteMany({ where: { userId: session.userId, id: { not: session.id } } });
-  await setFlash(session.user.passwordHash ? "Password changed. Other devices were signed out." : "Password set. You can now sign in with it too.");
   revalidatePath("/app", "layout");
 }

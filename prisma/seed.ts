@@ -1,5 +1,5 @@
 // Demo data: one founder who runs two companies. Safe to re-run: wipes first.
-// Sign in with founder@bursar.demo / bursar-demo (demo only).
+// Locally, sign in as founder@bursar.demo with the test sign-in (ENABLE_TEST_LOGIN=1).
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../src/lib/crypto";
 import { createDemoCompany, createSecondDemoCompany } from "../src/lib/companies";
@@ -32,7 +32,7 @@ async function main() {
   const user = await db.user.create({ data: { email: DEMO_EMAIL, name: "David Babatunde", passwordHash: hashPassword(DEMO_PASSWORD), emailVerifiedAt: new Date() } });
   const a = await createDemoCompany(db, user.id);
   const b = await createSecondDemoCompany(db, user.id);
-  console.log(`Seeded ${a.name} and ${b.name} for ${DEMO_EMAIL} (password: ${DEMO_PASSWORD}).`);
+  console.log(`Seeded ${a.name} and ${b.name} for ${DEMO_EMAIL}.`);
 }
 
 main().finally(() => db.$disconnect());

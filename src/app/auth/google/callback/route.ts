@@ -4,8 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { setFlash } from "@/lib/flash";
-import { exchangeCode, verifyIdToken } from "@/lib/google";
-import { appUrl } from "@/lib/tokens";
+import { appUrl, exchangeCode, verifyIdToken } from "@/lib/google";
 
 export const dynamic = "force-dynamic";
 

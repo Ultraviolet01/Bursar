@@ -86,3 +86,16 @@ export async function verifyIdToken(idToken: string, opts: { nonce: string; clie
   if (typeof c.sub !== "string" || typeof c.email !== "string") throw new Error("Token is missing the account id or email");
   return { sub: c.sub, email: c.email.toLowerCase(), emailVerified: c.email_verified === true, name: typeof c.name === "string" ? c.name : c.email.split("@")[0] };
 }
+
+export function appUrl(fallbackHost?: string | null, proto?: string | null): string {
+  if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+  return `${proto ?? "http"}://${fallbackHost ?? "localhost:3000"}`;
+}
+
+/**
+ * Test-only sign-in (for the browser test and local development without Google).
+ * Needs ENABLE_TEST_LOGIN=1 and is always off on Vercel, whatever the variable says.
+ */
+export function testLoginEnabled() {
+  return process.env.ENABLE_TEST_LOGIN === "1" && !process.env.VERCEL;
+}

@@ -27,7 +27,7 @@ Mock mode is the default and needs no Blaaiz credentials. Balances, rates, payou
 
 ## Deploying on Vercel
 
-Live demo: https://bursar-beta.vercel.app (mock mode; demo login `founder@bursar.demo` / `bursar-demo`).
+Live demo: https://bursar-beta.vercel.app (mock mode; sign in with Google).
 
 - Production uses Postgres, because Vercel functions have no persistent disk. Add **Neon** from the project's Storage tab; it sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 - `npm run vercel-build` (which Vercel runs automatically):
@@ -46,30 +46,17 @@ Live demo: https://bursar-beta.vercel.app (mock mode; demo login `founder@bursar
 
 ## How founders sign up
 
-Any email works: Gmail, Outlook, a company domain. There are three ways in, and all of them land on the same account when the email matches.
+Founders sign in with **Google only**: Gmail or Google Workspace. There are no passwords and no emailed links.
 
-- **Continue with Google:** one click. It uses OpenID Connect with PKCE, state and nonce, and Bursar checks the ID token's signature against Google's keys.
-  - Only Google-verified emails are accepted.
-  - An existing account with the same email gets Google linked to it.
-- **Email sign-in link:** no password. The link works once, expires in 15 minutes, and creates the account if it is new.
-  - It opens a confirm page first, so email scanners that follow links cannot use it up.
-- **Email and password:** passwords are hashed with scrypt.
-  - Sign-up sends a confirmation email, and the app shows a banner until it is confirmed.
-  - **Forgot password?** sends a 30-minute reset link. Resetting signs out every other device.
-
-Each address can trigger at most 3 emails per 15 minutes. Founders who joined with Google or a link can set a password later in **Settings, Your account**.
-
-### Setting it up
-
-- **Google:**
-  - In Google Cloud Console, create an OAuth client (type: Web application).
-  - Add the redirect URI `<APP_URL>/auth/google/callback` (locally: `http://localhost:3000/auth/google/callback`).
-  - Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-  - The button only appears when both are set.
-- **Email:** set `RESEND_API_KEY` and `EMAIL_FROM` (a sender verified with Resend).
-  - Without them, emails go to a dev inbox at `/dev/mail`.
-  - That inbox is off in production unless `ENABLE_DEV_MAIL=1`. Never enable it on a public server: it shows everyone's sign-in links.
-- Set `APP_URL` to the public address so emailed links point to the right place.
+- "Continue with Google" uses OpenID Connect with PKCE, state and nonce.
+- Bursar checks the ID token's signature against Google's keys, and accepts only Google-verified emails.
+- The first sign-in creates the account. Onboarding then asks for the first company.
+- Setup:
+  - Create an OAuth client in Google Cloud Console (type: Web application).
+  - Add `<APP_URL>/auth/google/callback` as a redirect URI.
+  - Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+  - While the consent screen is in Testing, only the test users you list there can sign in.
+- For local development and the browser test without Google, `ENABLE_TEST_LOGIN=1` turns on `/auth/test-login`. It is always off on Vercel, whatever the variable says.
 
 ## Lifecycle
 

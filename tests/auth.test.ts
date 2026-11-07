@@ -1,34 +1,27 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import { execSync } from "node:child_process";
-import { beforeAll, describe, expect, it } from "vitest";
-import { db } from "../src/lib/db";
-import { consumeToken, issueToken, peekToken, TooManyRequests } from "../src/lib/tokens";
-import { newOAuthRequest, verifyIdToken } from "../src/lib/google";
+import { afterEach, describe, expect, it } from "vitest";
+import { newOAuthRequest, testLoginEnabled, verifyIdToken } from "../src/lib/google";
 
-beforeAll(() => {
-  execSync("npx tsx prisma/seed.ts", { env: { ...process.env, DATABASE_URL: "file:./test.db" }, stdio: "ignore" });
-});
-
-describe("email link tokens", () => {
-  it("work exactly once and only for their kind", async () => {
-    const t = await issueToken("LOGIN", "once@example.com");
-    expect(await peekToken("RESET", t)).toBeNull();
-    expect(await peekToken("LOGIN", t)).not.toBeNull();
-    const [a, b] = await Promise.all([consumeToken("LOGIN", t), consumeToken("LOGIN", t)]);
-    expect([a, b].filter(Boolean)).toHaveLength(1);
-    expect(await consumeToken("LOGIN", t)).toBeNull();
+describe("test-only sign-in guard", () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env.ENABLE_TEST_LOGIN = saved.ENABLE_TEST_LOGIN;
+    process.env.VERCEL = saved.VERCEL;
   });
-
-  it("store only a hash and expire", async () => {
-    const t = await issueToken("RESET", "expire@example.com");
-    expect(await db.authToken.count({ where: { id: t } })).toBe(0);
-    await db.authToken.updateMany({ where: { email: "expire@example.com" }, data: { expiresAt: new Date(Date.now() - 1000) } });
-    expect(await consumeToken("RESET", t)).toBeNull();
+  it("is off by default", () => {
+    delete process.env.ENABLE_TEST_LOGIN;
+    delete process.env.VERCEL;
+    expect(testLoginEnabled()).toBe(false);
   });
-
-  it("limit how many emails one address can trigger", async () => {
-    for (let i = 0; i < 3; i++) await issueToken("LOGIN", "spam@example.com");
-    await expect(issueToken("LOGIN", "spam@example.com")).rejects.toBeInstanceOf(TooManyRequests);
+  it("is on only with ENABLE_TEST_LOGIN=1 off Vercel", () => {
+    process.env.ENABLE_TEST_LOGIN = "1";
+    delete process.env.VERCEL;
+    expect(testLoginEnabled()).toBe(true);
+  });
+  it("is always off on Vercel, even if the variable is set", () => {
+    process.env.ENABLE_TEST_LOGIN = "1";
+    process.env.VERCEL = "1";
+    expect(testLoginEnabled()).toBe(false);
   });
 });
 

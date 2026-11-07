@@ -1,7 +1,6 @@
 // GET /auth/google: start "Continue with Google".
 import { NextResponse, type NextRequest } from "next/server";
-import { googleEnabled, newOAuthRequest } from "@/lib/google";
-import { appUrl } from "@/lib/tokens";
+import { appUrl, googleEnabled, newOAuthRequest } from "@/lib/google";
 
 export const dynamic = "force-dynamic";
 
