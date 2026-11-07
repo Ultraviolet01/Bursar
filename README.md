@@ -1,6 +1,6 @@
 # Bursar
 
-An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a company's NGN and USD wallets, forecasts upcoming payments, and pays, swaps, defers or escalates. It always stays inside hard limits the owner sets.
+An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a company's NGN, USD, GBP and EUR wallets, forecasts upcoming payments, and pays, swaps, defers or escalates. It always stays inside hard limits the owner sets.
 
 - One founder account can run several companies. Each company has its own wallets, payees, rules, approvals and Blaaiz credentials.
 - Built for the Blaaiz Buildathon (GDG Ilorin x Blaaiz).
@@ -60,17 +60,6 @@ A 2:48 narrated walkthrough. It shows:
 - A second company, and dark mode.
 
 Narrated with a local text-to-speech voice. To rebuild it, see [scripts/walkthrough](scripts/walkthrough/README.md).
-
-## Export to Excel
-
-**Export to Excel** (on Overview and Activity) downloads a workbook for the active company with five sheets:
-- **Summary:** balances, total treasury, counts and rules.
-- **Activity:** every decision, with its rule, outcome and Blaaiz reference.
-- **Payments.**
-- **Ledger.**
-- **Wallets.**
-
-Headers are styled and frozen, money columns are formatted, and every sheet has filters. `?format=csv` still gives the activity as CSV.
 
 ## How founders sign up
 
@@ -196,33 +185,6 @@ Sign in -> last active company -> switch or add companies from the sidebar -> Si
 - **Wallets**: per-wallet 14-day balance walk, shortfall callout, wallet rules, simulated deposits in mock mode.
 - **Settings**: company name, per-company Blaaiz credentials (live mode), webhook URL, test webhook, list of your companies.
 
-### Interaction and motion
-
-- The sidebar is fixed on desktop and never scrolls with the page. On phones it is a slide-in drawer.
-- The sidebar holds:
-  - The company switcher.
-  - Navigation with an animated active marker.
-  - A live "running" pulse.
-  - The pause switch.
-  - Sign out.
-- Every form button shows a spinner while it works and blocks double submits.
-- Results appear as toasts (for example "Cycle finished: 5 paid, 2 swaps, 1 waiting for you").
-- Pages fade in on navigation. Cards lift on hover. Money figures count up. The forecast line draws itself in.
-- On the landing page, sections reveal on scroll.
-- The landing hero is a looping motion piece:
-  - A small payment keeps the ship's painted line above water.
-  - A large one sinks the line, so the payment waits for the owner.
-
-### Accessibility (WCAG 2.1 AA)
-
-- Every text and background pair meets 4.5:1 contrast. The palette was measured, and the tokens were darkened where they fell short.
-- Visible focus rings on everything interactive, a skip link, `aria-current` on navigation, labelled form fields, and errors announced with `role="alert"`.
-- Toasts live in a polite live region.
-- The forecast chart can be read with the arrow keys and has a hidden data table for screen readers.
-- The hero animation has a pause button (WCAG 2.2.2). All motion is turned off for people who set "reduce motion".
-- Works at 390px wide with no sideways scrolling.
-- `npm run e2e` runs axe-core (WCAG 2.0 and 2.1, A and AA rules) on every page and fails on any violation.
-
 ## Testing
 
 - `npm test` (Vitest, 59 tests):
@@ -278,21 +240,6 @@ tests/         unit and integration tests
 scripts/       run-cycle.ts, e2e.mjs
 worker.ts      node-cron scheduler (all companies)
 ```
-
-## Where this differs from the spec
-
-- **Multiple companies per deployment.** The spec scoped one company per deployment. Founders asked to run more than one, so every record is scoped by company.
-- **Per-payment cap compares what the payee receives, not amount plus fee.**
-  - Otherwise the spec's own demo (a USD 1,500 contractor with a USD 1,500 cap) would escalate instead of `SWAP_THEN_PAY`.
-  - Fees still count toward the daily cap and buffers.
-- **The USD 120 SaaS bill is `SWAP_THEN_PAY`.** The decision rules allow a swap whenever another wallet has surplus.
-- **Webhook verification needs a timestamp.** The SDK signs `HMAC-SHA256(timestamp + "." + body)` and reads both `x-blaaiz-timestamp` and `x-blaaiz-signature`.
-- **Rejecting a proposal cancels that payment occurrence.** Recurring payments keep their schedule.
-- **Unverified against the live sandbox:**
-  - Rate list shape.
-  - Currency IDs (assumed to be ISO codes).
-  - Wallet response wrapping.
-  - The live client parses these defensively and fails the cycle loudly on an unexpected shape.
 
 ## Milestones
 
