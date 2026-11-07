@@ -5,6 +5,8 @@ An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a co
 - One founder account can run several companies. Each company has its own wallets, payees, rules, approvals and Blaaiz credentials.
 - Built for the Blaaiz Buildathon (GDG Ilorin x Blaaiz).
 
+  https://github.com/user-attachments/assets/74a1ff11-799d-48b9-aa55-c369b4e71e4a
+
 ## Quick start (mock mode)
 
 ```bash
