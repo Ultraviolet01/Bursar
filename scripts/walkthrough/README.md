@@ -1,6 +1,6 @@
 # Walkthrough video
 
-A 2:48 narrated walkthrough. To rebuild it after the app changes:
+A 2:47 narrated walkthrough. To rebuild it after the app changes:
 
 1. Set up Piper once, outside the repo:
    - `python3 -m venv $TTS_DIR/venv && $TTS_DIR/venv/bin/pip install piper-tts`

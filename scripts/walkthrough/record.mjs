@@ -111,15 +111,21 @@ await click(page.getByRole("button", { name: "Run cycle" }));
 await toast(/Cycle/);
 await d;
 await say("result");
-d = say("decisions"); await scrollBy(900, 12); await d;
-await scrollBy(-900, 8);
 
-// 5. Approvals
-await click(page.getByRole("link", { name: /Review 1 item/ }));
+// 5. Approvals: the swap first, then the new vendor
+await click(page.getByRole("link", { name: /Review 2 items/ }));
 await page.waitForURL(/approvals/);
+await click(page.getByRole("link", { name: /Rebalance NGN to USD/ }).first());
+d = say("swap"); await scrollBy(560, 12); await d;
+await scrollBy(450, 8);
+await click(page.getByRole("button", { name: "Approve and run" }));
+await toast(/Approved/);
+await say("swap_ok");
+await scrollBy(-1200, 6);
+await click(page.getByRole("link", { name: /Pay Zaria Haulage/ }).first());
 await say("approvals");
 d = say("checks"); await scrollBy(560, 12); await d;
-await scrollBy(500, 10);
+await scrollBy(450, 8);
 await click(page.getByRole("button", { name: "Approve and run" }));
 await toast(/Approved/);
 await say("approved");
@@ -127,8 +133,7 @@ await say("approved");
 // 6. Activity
 await click(page.getByRole("link", { name: "Activity" }).first());
 await page.waitForURL(/activity/);
-await say("activity");
-d = say("rows"); await scrollBy(520, 10); await d;
+d = say("activity"); await scrollBy(520, 10); await d;
 
 // 7. Excel
 await scrollBy(-1200, 6);
@@ -148,8 +153,7 @@ for (const [tab, key] of [["Activity", "x_activity"], ["Payments", "x_payments"]
 // 8. Wallets
 await page.goto(B + "/app/wallets?c=USD", { waitUntil: "networkidle" });
 await say("wallets");
-d = say("fund"); await scrollBy(800, 12); await d;
-d = say("ledger"); await scrollBy(700, 12); await d;
+d = say("fund"); await scrollBy(800, 12); await sleep(600); await scrollBy(700, 12); await d;
 
 // 9. Rules
 await page.goto(B + "/app/rules", { waitUntil: "networkidle" });

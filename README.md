@@ -87,11 +87,11 @@ Live demo: https://bursar-beta.vercel.app (mock mode; sign in with Google).
 <!-- To embed: edit this README on github.com, drag bursar-walkthrough.mp4 onto this line, and commit.
      GitHub stores the video outside the repository and plays it inline. -->
 
-A 2:48 narrated walkthrough. It shows:
+A 2:47 narrated walkthrough. It shows:
 - The landing page.
 - Google sign-in.
 - Onboarding, with automatic Blaaiz setup.
-- A cycle with a rebalance, and approving a proposal.
+- A cycle that pays routine bills alone, then approving the swap and a new payee.
 - Activity, and the Excel export.
 - Wallets and Rules.
 - A second company, and dark mode.

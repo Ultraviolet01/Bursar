@@ -1,34 +1,157 @@
 [
-  ["intro", "Bursar is a treasury agent for companies, built on Blaaiz.", "Bursar is a treasury agent for companies, built on Blaze."],
-  ["line", "Small bills sit under your line, so Bursar pays them alone. Big ones sink the line and wait for you.", "Small bills sit under your line, so Bursar pays them alone. Big ones sink the line, and wait for you."],
-  ["how", "It forecasts every wallet, pays or swaps when a bill is due, and asks you before anything over your line.", "It forecasts every wallet, pays or swaps when a bill is due, and asks you before anything over your line."],
-  ["rules2", "Every payment is checked against your rules twice before Blaaiz is called. No AI model can approve money.", "Every payment is checked against your rules twice, before Blaze is called. No A.I. model can approve money."],
-  ["google", "Founders sign in with Google. No passwords.", "Founders sign in with Google. No passwords."],
-  ["test", "For this recording, a test account stands in for the Google pop-up.", "For this recording, a test account stands in for the Google pop-up."],
-  ["onboard", "On first sign-in, you add a company, over a preview of your dashboard.", "On first sign-in, you add a company, over a preview of your dashboard."],
-  ["demo", "Pick its currency wallets. Here we load the demo: NGN 8m, USD 1,200, salaries and bills due today.", "Pick its currency wallets. Here we load the demo: eight million naira, twelve hundred dollars, and salaries and bills due today."],
-  ["setup", "Bursar sets up Blaaiz on its own: wallets, the NGN funding account and webhooks.", "Bursar sets up Blaze on its own. It finds the wallets, creates the naira funding account, and registers webhooks."],
-  ["overview", "Overview: total treasury across wallets and a 14-day forecast against your buffer.", "The overview shows total treasury across wallets, and a fourteen day forecast against your buffer."],
-  ["cycle", "Run a cycle: observe, forecast, decide, act, reconcile, learn.", "Run a cycle. Observe, forecast, decide, act, reconcile, and learn."],
-  ["result", "Payroll paid from NGN. One NGN to USD rebalance covers both USD bills, then pays them. One new vendor waits for you.", "Payroll is paid from naira. One naira to dollar rebalance covers both dollar bills, then pays them. One new vendor waits for you."],
-  ["decisions", "Every decision shows the rule it checked.", "Every decision shows the rule it checked."],
-  ["approvals", "Approvals: Zaria Haulage is a new payee and over your NGN 2m per-payment line.", "In approvals, Zaria Haulage is a new payee, and over your two million naira line."],
-  ["checks", "Bursar explains why, and lists every policy check: pass, needs you, or blocked.", "Bursar explains why, and lists every policy check: pass, needs you, or blocked."],
-  ["approved", "Approved. Rules are re-checked live and Blaaiz's fee is previewed right before the payout.", "Approved. The rules are re-checked live, and the Blaze fee is previewed, right before the payout."],
-  ["activity", "Activity: stats, and what Bursar learned from your decisions and the rates it got.", "Activity shows what Bursar learned from your decisions, and the rates it got."],
-  ["rows", "Each row: what happened, the outcome, the rule it checked and the Blaaiz reference.", "Each row has what happened, the outcome, the rule it checked, and the Blaze reference."],
-  ["export", "Export to Excel downloads a workbook for this company.", "Export to Excel downloads a workbook for this company."],
-  ["x_summary", "Summary: balances, total treasury, counts and your rules.", "The summary sheet has balances, total treasury, counts, and your rules."],
-  ["x_activity", "Activity: every decision with its outcome, rule and Blaaiz reference.", "Activity lists every decision, with its outcome, rule, and Blaze reference."],
-  ["x_payments", "Payments: the schedule, statuses and the merchant reference that stops double payments.", "Payments has the schedule, statuses, and the merchant reference that stops double payments."],
-  ["x_ledger", "Ledger: every payout, fee and swap, signed, per wallet.", "The ledger has every payout, fee, and swap, per wallet."],
-  ["x_wallets", "Wallets: balance, buffer, rate and the NGN funding account.", "And wallets: balance, buffer, rate, and the funding account."],
-  ["wallets", "Wallets: each one is kept above its buffer. This is the USD wallet after the rebalance.", "Each wallet is kept above its buffer. This is the dollar wallet after the rebalance."],
-  ["fund", "Fund NGN by bank transfer to the account Blaaiz created, or convert between your own wallets.", "Fund naira by bank transfer to the account Blaze created, or convert between your own wallets."],
-  ["ledger", "The ledger records the swap in and every payout and fee.", "The ledger records the swap, and every payout and fee."],
-  ["rulespage", "Rules are your line: caps, buffers, allowed swap pairs, rate band and auto-execute.", "Rules are your line: caps, buffers, allowed swaps, the rate band, and auto execute."],
-  ["multi", "One founder can run several companies.", "One founder can run several companies."],
-  ["multi2", "Each company gets its own wallets, payees, rules and approvals, set up automatically.", "Each company gets its own wallets, payees, rules, and approvals, all set up automatically."],
-  ["dark", "Dark mode, accessible in both themes. It works on phones too.", "There's dark mode too, and it all works on phones."],
-  ["outro", "Bursar. Runs your treasury, never past your line. bursar-beta.vercel.app", "Bursar. Runs your treasury. Never past your line."]
+ [
+  "intro",
+  "Bursar is a treasury agent for companies, built on Blaaiz.",
+  "Bursar is a treasury agent for companies, built on Blaze."
+ ],
+ [
+  "line",
+  "Small bills sit under your line, so Bursar pays them alone. Big ones sink the line and wait for you.",
+  "Small bills sit under your line, so Bursar pays them alone. Big ones sink the line, and wait for you."
+ ],
+ [
+  "how",
+  "It forecasts every wallet, pays bills when they're due, and asks you before any swap or anything over your line.",
+  "It forecasts every wallet, pays bills when they're due, and asks you before any swap, or anything over your line."
+ ],
+ [
+  "rules2",
+  "Every payment is checked against your rules twice before Blaaiz is called. No AI model can approve money.",
+  "Every payment is checked against your rules twice, before Blaze is called. No A.I. model can approve money."
+ ],
+ [
+  "google",
+  "Founders sign in with Google. No passwords.",
+  "Founders sign in with Google. No passwords."
+ ],
+ [
+  "test",
+  "For this recording, a test account stands in for the Google pop-up.",
+  "For this recording, a test account stands in for the Google pop-up."
+ ],
+ [
+  "onboard",
+  "On first sign-in, you add a company, over a preview of your dashboard.",
+  "On first sign-in, you add a company, over a preview of your dashboard."
+ ],
+ [
+  "demo",
+  "Pick its currency wallets. Here we load the demo: NGN 8m, USD 1,200, salaries and bills due today.",
+  "Pick its currency wallets. Here we load the demo: eight million naira, twelve hundred dollars, and salaries and bills due today."
+ ],
+ [
+  "setup",
+  "Bursar sets up Blaaiz on its own: wallets, the NGN funding account and webhooks.",
+  "Bursar sets up Blaze on its own. It finds the wallets, creates the naira funding account, and registers webhooks."
+ ],
+ [
+  "overview",
+  "Overview: total treasury across wallets and a 14-day forecast against your buffer.",
+  "The overview shows total treasury across wallets, and a fourteen day forecast against your buffer."
+ ],
+ [
+  "cycle",
+  "Run a cycle: observe, forecast, decide, act, reconcile, learn.",
+  "Run a cycle."
+ ],
+ [
+  "result",
+  "Payroll is paid on its own. The NGN to USD swap waits for you, and so does a new vendor. Both USD bills are held.",
+  "Payroll is paid on its own. The naira to dollar swap waits for you, and so does a new vendor. Both dollar bills are held until you decide."
+ ],
+ [
+  "swap",
+  "Every swap needs your approval. Bursar proposes NGN into USD to cover two USD bills, with the rate and fee.",
+  "Every swap needs your approval. Here Bursar proposes naira into dollars to cover two dollar bills, with the rate and fee."
+ ],
+ [
+  "swap_ok",
+  "Approved. Bursar swaps, then pays the two bills it was holding.",
+  "Approved. Bursar swaps, then pays the two bills it was holding."
+ ],
+ [
+  "approvals",
+  "Next: Zaria Haulage is a new payee and over your NGN 2m per-payment line.",
+  "Next, Zaria Haulage is a new payee, and over your two million naira line."
+ ],
+ [
+  "checks",
+  "Bursar explains why, and lists every policy check: pass, needs you, or blocked.",
+  "Bursar explains why, and lists every policy check: pass, needs you, or blocked."
+ ],
+ [
+  "approved",
+  "Approved. Rules are re-checked live and Blaaiz's fee is previewed right before the payout.",
+  "Approved. The rules are re-checked live, right before the payout."
+ ],
+ [
+  "activity",
+  "Activity: stats, and what Bursar learned from your decisions and the rates it got.",
+  "Activity shows what Bursar learned from your decisions, and the rates it got."
+ ],
+ [
+  "export",
+  "Export to Excel downloads a workbook for this company.",
+  "Export to Excel downloads a workbook for this company."
+ ],
+ [
+  "x_summary",
+  "Summary: balances, total treasury, counts and your rules.",
+  "The summary sheet has balances, total treasury, counts, and your rules."
+ ],
+ [
+  "x_activity",
+  "Activity: every decision with its outcome, rule and Blaaiz reference.",
+  "Activity lists every decision, with its outcome, rule, and Blaze reference."
+ ],
+ [
+  "x_payments",
+  "Payments: the schedule, statuses and the merchant reference that stops double payments.",
+  "Payments has the schedule, statuses, and the merchant reference that stops double payments."
+ ],
+ [
+  "x_ledger",
+  "Ledger: every payout, fee and swap, signed, per wallet.",
+  "The ledger has every payout, fee, and swap, per wallet."
+ ],
+ [
+  "x_wallets",
+  "Wallets: balance, buffer, rate and the NGN funding account.",
+  "And wallets: balance, buffer, rate, and the funding account."
+ ],
+ [
+  "wallets",
+  "Wallets: each one is kept above its buffer. This is the USD wallet after the rebalance.",
+  "Each wallet is kept above its buffer. This is the dollar wallet after the rebalance."
+ ],
+ [
+  "fund",
+  "Fund NGN by bank transfer to the account Blaaiz created, or convert between your own wallets.",
+  "Fund naira by bank transfer to the account Blaze created, or convert between your own wallets."
+ ],
+ [
+  "rulespage",
+  "Rules are your line: caps, buffers, allowed swap pairs, rate band and auto-execute.",
+  "Rules are your line: caps, buffers, allowed swaps, the rate band, and auto execute."
+ ],
+ [
+  "multi",
+  "One founder can run several companies.",
+  "One founder can run several companies."
+ ],
+ [
+  "multi2",
+  "Each company gets its own wallets, payees, rules and approvals, set up automatically.",
+  "Each company gets its own wallets, payees, rules, and approvals, all set up automatically."
+ ],
+ [
+  "dark",
+  "Dark mode, accessible in both themes. It works on phones too.",
+  "There's dark mode too, and it all works on phones."
+ ],
+ [
+  "outro",
+  "Bursar. Runs your treasury, never past your line. bursar-beta.vercel.app",
+  "Bursar. Runs your treasury. Never past your line."
+ ]
 ]
