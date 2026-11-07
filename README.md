@@ -9,36 +9,40 @@ An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a co
 
 ## The problem
 
-Small companies in Nigeria and across Africa hold money in several currencies (NGN, USD and others). They pay staff, contractors and vendors in different currencies. Today the founder does this by hand:
+Managing multi-currency cash and paying company bills is manual, slow and error-prone.
 
-- Checking every wallet's balance.
-- Working out whether there is enough for what is due.
-- Converting at whatever rate is showing that day.
-- Paying people one by one.
-
-Mistakes are common, and they cost money and trust:
-
-- **Late salaries**, because nobody noticed a wallet was short until payday.
-- **Converting at a bad moment**, because the swap happened when the bill was due, not when the rate was fair.
-- **Paying the same invoice twice**, because there is no record tying a payment to a bill.
-- **Draining a wallet** below what is needed for next week's payroll or suppliers.
-- **No trail of who decided what**, so it is hard to see why money moved.
+1. **Cash sits in the wrong currency.**
+   - A company receives money in NGN but needs to pay salaries or vendors in USD or EUR.
+   - Someone has to notice the imbalance, check rates, and convert by hand.
+   - If they wait too long, the rate moves against them or a payment fails.
+2. **Bills get paid late, or need constant attention.**
+   - Payroll, domain renewals, SaaS tools and vendor invoices arrive on different schedules and in different currencies.
+   - A founder or finance person has to remember each one, check balances, convert if needed, and send the payment.
+   - Miss one and something breaks: the domain expires, an employee is not paid, a tool gets cut off.
+3. **No continuous view.**
+   - Most small and mid-size companies still work in periodic cycles: check balances, review bills, convert, pay, reconcile.
+   - By the time they act, the situation has already changed.
+4. **Idle or trapped cash.**
+   - There is surplus in one currency while another is short.
+   - Or cash just sits there, with no one watching whether it should be converted for an upcoming need.
 
 ## How Bursar solves it
 
-Bursar does the treasury work on Blaaiz and stays inside limits the founder sets.
+Bursar is a treasury agent that watches every wallet continuously and acts on Blaaiz, inside limits the founder sets.
 
 | Problem | What Bursar does |
 |---------|------------------|
-| Late salaries | Forecasts every wallet 14 days ahead and pays due bills in priority order, payroll first. |
-| A currency runs short | Rebalances between the company's own wallets: one swap from the wallet with surplus, then it pays the bills. |
-| Converting at a bad moment | Skips swaps when the rate is worse than its 7-day average by more than your band, and defers bills that can wait. |
-| Paying twice | Gives every payout a unique merchant reference per bill. Running a cycle twice never pays twice. |
-| Draining a wallet | Keeps a buffer per wallet that no automatic action may touch. |
-| Big or unusual payments | Asks the owner before paying new payees, amounts over a cap, or anything outside the rules, with its reasons attached. |
-| No trail | Records every decision with the rule it checked, keeps a ledger of every movement, and exports both to Excel. |
+| Cash in the wrong currency | Spots the imbalance before a bill is due. It rebalances between the company's own wallets with one swap from the wallet that has surplus, previewing the rate and fee first. It skips swaps when the rate is worse than its 7-day average by more than your band. |
+| Late bills, constant attention | Knows every scheduled bill: payroll, domains, SaaS, vendors. Each cycle it pays what is due in priority order, payroll first. It swaps first when needed, defers what can wait, and asks the owner only for what is outside the rules. |
+| No continuous view | Runs every 10 minutes, and whenever a bill is added, money arrives or a swap is approved. It forecasts each wallet 14 days ahead and flags the day any of them would drop below its buffer. |
+| Idle or trapped cash | Watches surplus against upcoming needs, and proposes top-up swaps before a wallet runs short, not after. A buffer per wallet keeps enough cash in place for what is coming. |
 
-Money decisions come from fixed, tested rules, not an AI model. Every action is checked twice before Blaaiz is called, and the founder can pause everything at any time.
+Money decisions come from fixed, tested rules, not an AI model.
+
+- Every action is checked twice before Blaaiz is called.
+- No bill is paid twice.
+- Every decision is recorded with the rule it checked, and can be exported to Excel.
+- The founder can pause everything at any time.
 
 ## Quick start (mock mode)
 
