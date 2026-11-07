@@ -1,6 +1,5 @@
 // Records a ~3 minute captioned walkthrough of Bursar against a local, freshly seeded server.
-// npm start (with ENABLE_TEST_LOGIN=1), then: node scripts/record-walkthrough.mjs <outDir>
-// Wipes the local database first. Never point it at production.
+// See scripts/walkthrough/README.md. Wipes the local database first; never point it at production.
 import { execFileSync, execSync } from "node:child_process";
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
@@ -8,13 +7,14 @@ const { chromium } = require("playwright");
 
 const OUT = process.argv[2];
 const HERE = new URL(".", import.meta.url).pathname;
+const TTS = process.env.TTS_DIR ?? `${HERE}tts`;
 const B = "http://localhost:3000";
 const W = 1280, H = 720;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Fresh data: no founders yet, rates history in place.
-execSync("npx tsx prisma/seed.ts", { cwd: new URL("..", import.meta.url).pathname, stdio: "ignore" });
-execSync(`node -e "const{PrismaClient}=require('@prisma/client');const d=new PrismaClient();(async()=>{await d.session.deleteMany();await d.ledgerEntry.deleteMany();await d.execution.deleteMany();await d.action.deleteMany();await d.cycle.deleteMany();await d.scheduledPayment.deleteMany();await d.payee.deleteMany();await d.walletSnapshot.deleteMany();await d.wallet.deleteMany();await d.webhookEvent.deleteMany();await d.auditLog.deleteMany();await d.policy.deleteMany();await d.company.deleteMany();await d.user.deleteMany();await d.mockTransaction.deleteMany();await d.mockWallet.deleteMany();await d.\\$disconnect()})()"`, { cwd: new URL("..", import.meta.url).pathname, stdio: "ignore" });
+execSync("npx tsx prisma/seed.ts", { cwd: new URL("../..", import.meta.url).pathname, stdio: "ignore" });
+execSync(`node -e "const{PrismaClient}=require('@prisma/client');const d=new PrismaClient();(async()=>{await d.session.deleteMany();await d.ledgerEntry.deleteMany();await d.execution.deleteMany();await d.action.deleteMany();await d.cycle.deleteMany();await d.scheduledPayment.deleteMany();await d.payee.deleteMany();await d.walletSnapshot.deleteMany();await d.wallet.deleteMany();await d.webhookEvent.deleteMany();await d.auditLog.deleteMany();await d.policy.deleteMany();await d.company.deleteMany();await d.user.deleteMany();await d.mockTransaction.deleteMany();await d.mockWallet.deleteMany();await d.\\$disconnect()})()"`, { cwd: new URL("../..", import.meta.url).pathname, stdio: "ignore" });
 
 const browser = await chromium.launch();
 const ctx = await browser.newContext({ viewport: { width: W, height: H }, recordVideo: { dir: OUT, size: { width: W, height: H } }, acceptDownloads: true, colorScheme: "light" });
@@ -48,13 +48,20 @@ await ctx.addInitScript(() => {
 });
 
 const page = await ctx.newPage();
-const say = async (text, hold = 0) => {
-  await page.evaluate((t) => {
+const videoStart = Date.now();
+const { readFileSync, writeFileSync } = await import("node:fs");
+const timing = JSON.parse(readFileSync(`${TTS}/timing.json`, "utf8"));
+const cues = [];
+// Shows the caption, logs when this line starts on the video, and resolves when it has been spoken.
+const say = (key) => {
+  const text = timing.captions[key];
+  cues.push({ key, at: (Date.now() - videoStart) / 1000 });
+  page.evaluate((t) => {
     sessionStorage.setItem("demo-cap", t);
     const c = document.getElementById("demo-cap");
-    if (c) { c.textContent = t; c.style.opacity = t ? "1" : "0"; }
+    if (c) { c.textContent = t; c.style.opacity = "1"; }
   }, text).catch(() => {});
-  if (hold) await sleep(hold);
+  return sleep(timing.durations[key] * 1000 + 300);
 };
 const glide = async (loc, opts = {}) => {
   const box = await loc.boundingBox();
@@ -63,133 +70,116 @@ const glide = async (loc, opts = {}) => {
 };
 const click = async (loc, opts) => { await loc.scrollIntoViewIfNeeded(); await glide(loc, opts); await loc.click(); };
 const scrollBy = async (dy, steps = 12) => { for (let i = 0; i < steps; i++) { await page.mouse.wheel(0, dy / steps); await sleep(60); } };
-const t0 = Date.now();
-const mark = (s) => console.log(`${((Date.now() - t0) / 1000).toFixed(0).padStart(3)}s  ${s}`);
+const toast = (re) => page.locator('[role="status"] span.flex-1').filter({ hasText: re }).first().waitFor({ timeout: 20000 });
+let d;
 
 // 1. Landing
-mark("landing");
 await page.goto(B + "/", { waitUntil: "networkidle" });
 await page.mouse.move(640, 360);
-await say("Bursar is a treasury agent for companies, built on Blaaiz.", 3500);
-await say("Small bills sit under your line, so Bursar pays them alone. Big ones sink the line and wait for you.", 6500);
-await scrollBy(780, 14);
-await say("It forecasts every wallet, pays or swaps when a bill is due, and asks you before anything over your line.", 4500);
-await scrollBy(700, 14);
-await say("Every payment is checked against your rules, twice, before Blaaiz is called. No AI model can approve money.", 4500);
+await sleep(600);
+await say("intro");
+await say("line");
+d = say("how"); await scrollBy(780, 14); await d;
+d = say("rules2"); await scrollBy(700, 14); await d;
 
-// 2. Sign in with Google
-mark("sign in");
+// 2. Sign in
 await page.goto(B + "/signin", { waitUntil: "networkidle" });
-await say("Founders sign in with Google. No passwords.", 1500);
-await glide(page.getByRole("link", { name: "Continue with Google" }), { pause: 1800 });
-await say("For this recording, a test account stands in for the Google pop-up.", 2500);
+d = say("google"); await glide(page.getByRole("link", { name: "Continue with Google" })); await d;
+await say("test");
 await page.goto(B + "/auth/test-login?email=amaka%40gmail.com&name=Amaka%20Eze", { waitUntil: "networkidle" });
 
-// 3. Onboarding overlay
-mark("onboarding");
-await say("First sign-in: add a company, over a preview of the dashboard.", 2500);
+// 3. Onboarding
+d = say("onboard");
 await click(page.getByLabel("Company name"));
 await page.getByLabel("Company name").pressSequentially("Kaduna Freight Ltd", { delay: 45 });
-await say("Pick its currency wallets. Here we load the demo: NGN 8m, USD 1,200, salaries and bills due today.", 1200);
+await d;
+d = say("demo");
 await click(page.getByLabel("Fill it with demo data"));
 await page.getByLabel("Fill it with demo data").check();
-await sleep(1500);
+await d;
 await click(page.getByRole("button", { name: "Create company" }));
 await page.waitForURL(B + "/app");
-await say("Bursar sets up Blaaiz on its own: wallets, the NGN funding account and webhooks.", 4000);
+await say("setup");
 
 // 4. Overview and a cycle
-mark("overview + cycle");
-await say("Overview: total treasury across wallets and a 14-day forecast against your buffer.", 2000);
-await glide(page.locator("svg[role=img]").first(), { pause: 400 });
+d = say("overview");
+await glide(page.locator("svg[role=img]").first(), { pause: 300 });
 for (let x = 0; x < 6; x++) { await page.mouse.move(450 + x * 90, 470, { steps: 6 }); await sleep(250); }
-await sleep(1200);
-await say("Run a cycle: observe, forecast, decide, act, reconcile, learn.", 1200);
+await d;
+d = say("cycle");
 await click(page.getByRole("button", { name: "Run cycle" }));
-await page.locator('[role="status"] span.flex-1').filter({ hasText: /Cycle/ }).first().waitFor({ timeout: 20000 });
-await say("Payroll paid from NGN. One NGN to USD rebalance covers both USD bills, then pays them. One new vendor waits for you.", 6000);
-await scrollBy(900, 12);
-await say("Every decision shows the rule it checked.", 3500);
+await toast(/Cycle/);
+await d;
+await say("result");
+d = say("decisions"); await scrollBy(900, 12); await d;
 await scrollBy(-900, 8);
 
 // 5. Approvals
-mark("approvals");
 await click(page.getByRole("link", { name: /Review 1 item/ }));
 await page.waitForURL(/approvals/);
-await say("Approvals: Zaria Haulage is a new payee and over your NGN 2m per-payment line.", 4000);
-await scrollBy(560, 12);
-await say("Bursar explains why, and lists every policy check: pass, needs you, or blocked.", 4500);
+await say("approvals");
+d = say("checks"); await scrollBy(560, 12); await d;
 await scrollBy(500, 10);
 await click(page.getByRole("button", { name: "Approve and run" }));
-await page.locator('[role="status"] span.flex-1').filter({ hasText: /Approved/ }).first().waitFor({ timeout: 20000 });
-await say("Approved. The rules are re-checked live and Blaaiz's fee is previewed right before the payout.", 4000);
+await toast(/Approved/);
+await say("approved");
 
-// 6. Activity and Learn
-mark("activity");
+// 6. Activity
 await click(page.getByRole("link", { name: "Activity" }).first());
 await page.waitForURL(/activity/);
-await say("Activity: stats, and what Bursar learned from your decisions and the rates it got.", 4000);
-await scrollBy(520, 10);
-await say("Each row: what happened, the outcome, the rule it checked and the Blaaiz reference.", 4000);
+await say("activity");
+d = say("rows"); await scrollBy(520, 10); await d;
 
-// 7. Excel export
-mark("excel");
+// 7. Excel
 await scrollBy(-1200, 6);
 const [download] = await Promise.all([page.waitForEvent("download"), click(page.getByRole("link", { name: "Export to Excel" }))]);
-await say("Export to Excel downloads a workbook for this company.", 1500);
+d = say("export");
 const file = `${OUT}/${download.suggestedFilename()}`;
 await download.saveAs(file);
 execFileSync("node", [`${HERE}xlsx-preview.mjs`, file, `${OUT}/report.html`]);
+await d;
 await page.goto(`file://${OUT}/report.html`);
-await say("Summary: balances, total treasury, counts and your rules.", 3500);
-for (const [tab, text] of [
-  ["Activity", "Activity: every decision with its outcome, rule and Blaaiz reference."],
-  ["Payments", "Payments: the schedule, statuses and the merchant reference that stops double payments."],
-  ["Ledger", "Ledger: every payout, fee and swap, signed, per wallet."],
-  ["Wallets", "Wallets: balance, buffer, rate and the NGN funding account."],
-]) {
-  await click(page.locator(".tab", { hasText: tab }));
-  await say(text, 3300);
+await say("x_summary");
+for (const [tab, key] of [["Activity", "x_activity"], ["Payments", "x_payments"], ["Ledger", "x_ledger"], ["Wallets", "x_wallets"]]) {
+  await click(page.locator(".tab", { hasText: tab }), { pause: 150 });
+  await say(key);
 }
 
-// 8. Wallets and rebalancing
-mark("wallets");
+// 8. Wallets
 await page.goto(B + "/app/wallets?c=USD", { waitUntil: "networkidle" });
-await say("Wallets: each one is kept above its buffer. Here is the USD wallet after the rebalance.", 3500);
-await scrollBy(800, 12);
-await say("Fund NGN by bank transfer to the account Blaaiz created, or convert between your own wallets.", 4000);
-await scrollBy(700, 12);
-await say("The ledger records the swap in and every payout and fee.", 3500);
+await say("wallets");
+d = say("fund"); await scrollBy(800, 12); await d;
+d = say("ledger"); await scrollBy(700, 12); await d;
 
 // 9. Rules
-mark("rules");
 await page.goto(B + "/app/rules", { waitUntil: "networkidle" });
-await say("Rules are your line: caps, buffers, allowed swap pairs, rate band and auto-execute.", 4500);
+await say("rulespage");
 
-// 10. A second company
-mark("second company");
+// 10. Second company
 await page.goto(B + "/app", { waitUntil: "networkidle" });
+d = say("multi");
 await click(page.getByRole("button", { name: /Switch company$/ }));
-await say("One founder can run several companies.", 1200);
 await click(page.getByRole("link", { name: "+ Add a company" }));
 await page.waitForURL(/companies\/new/);
-await page.getByLabel("Company name").pressSequentially("Ilorin Agro Foods", { delay: 40 });
+await d;
+await page.getByLabel("Company name").pressSequentially("Ilorin Agro Foods", { delay: 35 });
 await click(page.getByRole("button", { name: "Create company" }));
 await page.waitForURL(B + "/app");
-await say("Each company gets its own wallets, payees, rules and approvals, set up automatically.", 4000);
+await say("multi2");
 
 // 11. Dark mode and close
-mark("dark + close");
 await click(page.getByRole("radio", { name: "Dark" }).first());
-await say("Dark mode, accessible in both themes. It works on phones too.", 3500);
+d = say("dark");
+await sleep(1200);
 await page.goto(B + "/app/approvals", { waitUntil: "networkidle" });
-await sleep(1500);
+await d;
 await click(page.getByRole("radio", { name: "Light" }).first());
 await page.goto(B + "/", { waitUntil: "networkidle" });
-await say("Bursar. Runs your treasury, never past your line. bursar-beta.vercel.app", 5000);
-mark("end");
+await say("outro");
+await sleep(800);
 
+writeFileSync(`${OUT}/cues.json`, JSON.stringify(cues, null, 1));
 const video = page.video();
 await ctx.close();
 await browser.close();
-console.log("VIDEO", await video.path());
+console.log("VIDEO", await video.path(), "length", ((Date.now() - videoStart) / 1000).toFixed(1));

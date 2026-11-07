@@ -48,7 +48,7 @@ Live demo: https://bursar-beta.vercel.app (mock mode; sign in with Google).
 <!-- To embed: edit this README on github.com, drag bursar-walkthrough.mp4 onto this line, and commit.
      GitHub stores the video outside the repository and plays it inline. -->
 
-A 2.5 minute captioned walkthrough. It shows:
+A 2:48 narrated walkthrough. It shows:
 - The landing page.
 - Google sign-in.
 - Onboarding, with automatic Blaaiz setup.
@@ -57,7 +57,7 @@ A 2.5 minute captioned walkthrough. It shows:
 - Wallets and Rules.
 - A second company, and dark mode.
 
-To re-record it, run `node scripts/record-walkthrough.mjs <outDir>` against a local server started with `ENABLE_TEST_LOGIN=1`. It wipes the local database first.
+Narrated with a local text-to-speech voice. To rebuild it, see [scripts/walkthrough](scripts/walkthrough/README.md).
 
 ## Export to Excel
 
