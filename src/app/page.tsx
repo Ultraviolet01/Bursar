@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { HeroShip } from "@/components/hero-ship";
 import { Reveal } from "@/components/interactive";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const GITHUB = "https://github.com/ultraviolet01/bursar";
 
@@ -24,6 +25,7 @@ export default function Landing() {
             <a href="#line" className="nav-link hidden sm:inline">Your line</a>
             <a href={`${GITHUB}#readme`} className="nav-link hidden sm:inline">Docs</a>
             <a href={GITHUB} className="nav-link hidden sm:inline">GitHub</a>
+            <ThemeToggle className="hidden sm:inline-flex" />
             <Link href="/signin" className="nav-link">Sign in</Link>
             <Link href="/app" className="pill-outline">Open app</Link>
           </nav>

@@ -59,7 +59,7 @@ export function HeroShip() {
         type="button"
         onClick={() => setPaused((p) => !p)}
         aria-pressed={paused}
-        className="absolute bottom-3 right-3 z-20 inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/80 px-3 py-1.5 text-sm text-ink backdrop-blur transition hover:bg-white sm:bottom-5 sm:right-6"
+        className="absolute bottom-3 right-3 z-20 inline-flex items-center gap-2 rounded-full border border-line bg-surface/85 px-3 py-1.5 text-sm text-ink backdrop-blur transition hover:bg-surface sm:bottom-5 sm:right-6"
       >
         {paused ? <IconPlay className="h-3.5 w-3.5" /> : <IconPause className="h-3.5 w-3.5" />}
         {paused ? "Play animation" : "Pause animation"}
@@ -78,15 +78,15 @@ export function HeroShip() {
 
       <svg viewBox="0 0 1440 480" className="block h-auto w-full" role="img" aria-label="A cargo ship with a painted line on its hull. A small payment keeps the line above water. A large payment pushes it under.">
         {/* chart-paper grid */}
-        <g stroke="#E4EAE9" strokeWidth={1}>
+        <g style={{ stroke: "rgb(var(--sky-grid))" }} strokeWidth={1}>
           {Array.from({ length: 17 }, (_, i) => <line key={`v${i}`} x1={i * 90} x2={i * 90} y1={0} y2={372} />)}
           {Array.from({ length: 4 }, (_, i) => <line key={`h${i}`} x1={0} x2={1440} y1={i * 90 + 60} y2={i * 90 + 60} />)}
         </g>
 
         {/* compass */}
         <g transform="translate(1290 110)">
-          <text x={0} y={-62} textAnchor="middle" className="display" fontSize={16} fill="#0F2D3A">N</text>
-          <circle r={46} fill="#F3F6F5" stroke="#9AA9AD" strokeWidth={1.5} />
+          <text x={0} y={-62} textAnchor="middle" className="display" fontSize={16} style={{ fill: "rgb(var(--ink))" }}>N</text>
+          <circle r={46} style={{ fill: "rgb(var(--canvas))", stroke: "rgb(var(--strong))" }} strokeWidth={1.5} />
           <circle r={38} fill="none" stroke="#C8D2D4" strokeWidth={1} />
           {Array.from({ length: 24 }, (_, i) => {
             const a = (i * Math.PI) / 12;
@@ -99,14 +99,14 @@ export function HeroShip() {
             <path d="M0,-36 L6,0 L0,4 L-6,0 Z" fill="#C38A26" />
             <path d="M0,36 L6,0 L0,-4 L-6,0 Z" fill="#9FB8BF" />
           </g>
-          <circle r={3} fill="#F3F6F5" stroke="#0F2D3A" />
+          <circle r={3} style={{ fill: "rgb(var(--canvas))", stroke: "rgb(var(--ink))" }} />
         </g>
 
         {/* ship */}
         <g className="hero-ship">
           <g className="hero-bob">
             {/* superstructure */}
-            <rect x={300} y={172} width={92} height={82} fill="#DDE5E6" />
+            <rect x={300} y={172} width={92} height={82} style={{ fill: "rgb(var(--house))" }} />
             <rect x={292} y={164} width={108} height={10} fill="#C9D4D6" />
             {[0, 1, 2, 3].map((r) =>
               [0, 1, 2, 3, 4, 5].map((c) => <rect key={`${r}${c}`} x={312 + c * 12} y={184 + r * 16} width={7} height={r === 0 ? 7 : 5} fill={r === 0 ? "#102C38" : "#4F6670"} />),
@@ -121,8 +121,8 @@ export function HeroShip() {
             <ExtraLoad />
 
             {/* hull */}
-            <path d="M262,262 L1182,236 L1140,382 L280,388 Z" fill="#102C38" />
-            <path d="M262,262 L1182,236 L1180,242 L263,268 Z" fill="#1E4A5C" />
+            <path d="M262,262 L1182,236 L1140,382 L280,388 Z" style={{ fill: "rgb(var(--hull))" }} />
+            <path d="M262,262 L1182,236 L1180,242 L263,268 Z" style={{ fill: "rgb(var(--deck))" }} />
             <path d="M290,330 L1150,316" stroke="#1E4A5C" strokeWidth={1.5} />
             <text x={1095} y={292} textAnchor="end" className="display" fontSize={22} letterSpacing={4} fill="#FFFFFF">BURSAR</text>
             <circle cx={1106} cy={286} r={4} fill="none" stroke="#5E8E9A" strokeWidth={1.5} />
@@ -139,8 +139,8 @@ export function HeroShip() {
         </g>
 
         {/* sea, drawn over the hull so the sunk part reads as underwater */}
-        <rect x={0} y={372} width={1440} height={108} fill="#C7DADF" opacity={0.9} />
-        <rect x={0} y={404} width={1440} height={76} fill="#AFCBD3" opacity={0.96} />
+        <rect x={0} y={372} width={1440} height={108} style={{ fill: "rgb(var(--water))" }} opacity={0.9} />
+        <rect x={0} y={404} width={1440} height={76} style={{ fill: "rgb(var(--sea))" }} opacity={0.96} />
         <ellipse cx={720} cy={430} rx={430} ry={12} fill="#102C38" opacity={0.08} />
         <line x1={0} x2={1440} y1={372} y2={372} stroke="#8FB0B9" strokeWidth={1.5} />
         <Waves y={404} opacity={0.9} className="hero-waves" />

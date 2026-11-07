@@ -16,7 +16,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <WelcomeReveal>
     <div className="min-h-screen">
-      <a href="#main" className="sr-only z-[70] rounded-lg bg-ink px-4 py-2 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
+      <a href="#main" className="sr-only z-[70] rounded-lg bg-ink px-4 py-2 text-canvas focus:not-sr-only focus:fixed focus:left-4 focus:top-4">
         Skip to content
       </a>
       <Sidebar
@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
       <div className="min-w-0 lg:pl-[280px]">
         {mode === "mock" && (
-          <div className="border-b border-amber-line/60 bg-amber-card px-4 py-2.5 text-sm text-[#5C4718] sm:px-8">
+          <div className="border-b border-amber-line/60 bg-amber-card px-4 py-2.5 text-sm text-amber-ink sm:px-8">
             Mock mode. Balances, rates, payouts and webhooks are simulated. Set <code className="font-mono">BLAAIZ_MODE=live</code> to use the Blaaiz sandbox.
           </div>
         )}

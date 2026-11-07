@@ -38,7 +38,7 @@ export default async function Payments({ searchParams }: { searchParams: Promise
   return (
     <>
       <PageHeader title="Payments" subtitle="Everything Bursar knows is coming up" />
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <div className="card overflow-hidden">
           <div className="flex flex-col gap-3 border-b border-line p-4 sm:p-5">
             <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-canvas p-1">
@@ -54,7 +54,32 @@ export default async function Payments({ searchParams }: { searchParams: Promise
               ))}
             </div>
           </div>
-          <div className="overflow-x-auto">
+          {/* Phones: one card per payment */}
+          <ul className="divide-y divide-line md:hidden">
+            {payments.map((p) => (
+              <li key={p.id} className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate text-[15px] text-ink">{p.payee.name}</div>
+                    <div className="text-sm text-muted">{p.dueDate < today && !["PAID", "CANCELLED"].includes(p.status) ? <span className="text-amber">Overdue {shortDate(p.dueDate)}</span> : p.dueDate === today ? "Due today" : `Due ${shortDate(p.dueDate)}`} · {CATEGORY_LABEL[p.payee.category as Category]}</div>
+                  </div>
+                  <div className="num shrink-0 text-right text-[15px] text-ink">{formatMinor(bn(p.amount))} <span className="text-faint">{p.currency}</span></div>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-sm text-muted">
+                    <Pill tone={STATUS[p.status]?.tone ?? "grey"}>{STATUS[p.status]?.label ?? p.status}</Pill>
+                    {p.recurrence === "NONE" ? "Once" : p.recurrence === "WEEKLY" ? "Weekly" : "Monthly"}
+                  </span>
+                  {["SCHEDULED", "DEFERRED", "PROPOSED"].includes(p.status) && (
+                    <form action={cancelPayment}><input type="hidden" name="id" value={p.id} /><SubmitButton className="rounded-md px-2 py-1 text-sm text-muted transition hover:bg-bad-soft hover:text-bad" pendingText="Cancelling">Cancel<span className="sr-only"> payment to {p.payee.name}</span></SubmitButton></form>
+                  )}
+                </div>
+                {p.memo && <div className="mt-1 text-sm text-muted">{p.memo}</div>}
+              </li>
+            ))}
+            {payments.length === 0 && <li className="px-4 py-10 text-center text-muted">No payments match.</li>}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[760px] text-left text-[15px]">
               <caption className="sr-only">Scheduled payments</caption>
               <thead className="bg-canvas/60 text-muted">

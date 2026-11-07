@@ -20,7 +20,7 @@ const TONE: Record<Tone, string> = {
   amber: "bg-amber-soft text-amber",
   good: "bg-good-soft text-good",
   bad: "bg-bad-soft text-bad",
-  grey: "bg-[#ECEFEF] text-muted",
+  grey: "bg-chip text-muted",
 };
 
 export function Pill({ tone, children, dot = true }: { tone: Tone; children: React.ReactNode; dot?: boolean }) {
@@ -33,7 +33,7 @@ export function Pill({ tone, children, dot = true }: { tone: Tone; children: Rea
 }
 
 export function Tag({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-md bg-[#ECEFEF] px-2 py-0.5 text-[13px] text-muted">{children}</span>;
+  return <span className="rounded-md bg-chip px-2 py-0.5 text-[13px] text-muted">{children}</span>;
 }
 
 /** Big serif amount with a small currency code, as in the reference screens. */
@@ -84,9 +84,9 @@ export function Empty({ children }: { children: React.ReactNode }) {
 
 export function Row({ label, value, tone }: { label: string; value: React.ReactNode; tone?: "amber" | "muted" }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-t border-line py-3.5 text-[15px] first:border-t-0">
-      <span className="text-muted">{label}</span>
-      <span className={`num text-right ${tone === "amber" ? "text-amber" : "text-ink"}`}>{value}</span>
+    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 border-t border-line py-3.5 text-[15px] first:border-t-0">
+      <span className="shrink-0 text-muted">{label}</span>
+      <span className={`num min-w-0 max-w-full text-right [overflow-wrap:anywhere] ${tone === "amber" ? "text-amber" : "text-ink"}`}>{value}</span>
     </div>
   );
 }

@@ -169,7 +169,7 @@ export function Reveal({ children, delay = 0, className = "" }: { children: Reac
 
 export function CheckBadge() {
   return (
-    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-good text-white">
+    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-good text-surface">
       <IconCheck className="h-4 w-4" />
     </span>
   );

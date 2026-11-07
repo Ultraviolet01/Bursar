@@ -17,27 +17,27 @@ export default async function Payees() {
   return (
     <>
       <PageHeader title="Payees" subtitle={`${payees.length} payees, ${waiting} not allowlisted, ${unregistered} not yet Blaaiz customers`} />
-      <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_360px]">
         <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-[15px]">
+          <div className="md:overflow-x-auto">
+            <table className="block w-full text-left text-[15px] md:table md:min-w-[900px]">
               <caption className="sr-only">Payees</caption>
-              <thead className="bg-canvas/60 text-muted">
+              <thead className="hidden bg-canvas/60 text-muted md:table-header-group">
                 <tr>{["Payee", "Category", "Pays to", "Blaaiz customer", "Critical", "Allowlist"].map((h) => <th key={h} scope="col" className="px-5 py-3 font-normal">{h}</th>)}</tr>
               </thead>
-              <tbody className="divide-y divide-line">
+              <tbody className="block divide-y divide-line md:table-row-group">
                 {payees.map((p) => (
-                  <tr key={p.id} className="transition-colors hover:bg-canvas/60">
-                    <td className="px-5 py-4">
+                  <tr key={p.id} className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-4 transition-colors hover:bg-canvas/60 md:table-row md:p-0">
+                    <td data-label="Payee" className="block col-span-2 md:table-cell md:px-5 md:py-4 before:mb-1 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden ">
                       <div className="text-ink">{p.name}</div>
                       <div className="text-sm text-muted">{p.currency}, {p._count.payments} payment{p._count.payments === 1 ? "" : "s"}</div>
                     </td>
-                    <td className="px-5 py-4 text-body">{CATEGORY_LABEL[p.category as Category]}</td>
-                    <td className="px-5 py-4 text-body">
+                    <td data-label="Category" className="block md:table-cell md:px-5 md:py-4 before:mb-1 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden text-body">{CATEGORY_LABEL[p.category as Category]}</td>
+                    <td data-label="Pays to" className="block md:table-cell md:px-5 md:py-4 before:mb-1 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden text-body">
                       {p.method === "mobile_money" ? `Mobile money ${p.phone ?? ""}` : `${p.bankName ?? "Bank"} ...${p.accountNumber?.slice(-4) ?? "----"}`}
                       <div className="text-sm text-muted">{p.verifiedAt ? "Account checked" : "Not verified"}</div>
                     </td>
-                    <td className="px-5 py-4">
+                    <td data-label="Blaaiz customer" className="block col-span-2 md:table-cell md:px-5 md:py-4 before:mb-1 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden ">
                       {p.blaaizCustomerId ? (
                         <span className="font-mono text-sm text-ink" title={p.blaaizCustomerId}>{p.blaaizCustomerId.length > 16 ? `${p.blaaizCustomerId.slice(0, 14)}...` : p.blaaizCustomerId}</span>
                       ) : p.email && p.country && p.idType && p.idNumber ? (
@@ -63,14 +63,14 @@ export default async function Payees() {
                         </details>
                       )}
                     </td>
-                    <td className="px-5 py-4">
+                    <td data-label="Critical" className="block md:table-cell md:px-5 md:py-4 before:mb-1 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden ">
                       <form action={toggleCritical}>
                         <input type="hidden" name="id" value={p.id} />
                         <button className="rounded-full text-sm transition hover:opacity-80" aria-label={`${p.critical ? "Critical" : "Can wait"}: ${p.name}. Toggle`}>{p.critical ? <Pill tone="teal">Critical</Pill> : <span className="text-muted hover:text-ink">Can wait</span>}</button>
                       </form>
                     </td>
-                    <td className="px-5 py-4">
-                      <form action={toggleAllowlist} className="flex items-center gap-3">
+                    <td data-label="Allowlist" className="block md:table-cell md:px-5 md:py-4 before:mb-1 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden ">
+                      <form action={toggleAllowlist} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <input type="hidden" name="id" value={p.id} />
                         {p.allowlisted ? <Pill tone="good">Allowlisted</Pill> : <Pill tone="amber">Needs approval</Pill>}
                         <SubmitButton className="rounded-md px-2 py-1 text-sm text-teal transition hover:bg-teal-tint" pendingText="Saving">{p.allowlisted ? "Remove" : "Allow"}<span className="sr-only"> {p.name}</span></SubmitButton>

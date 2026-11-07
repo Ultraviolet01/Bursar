@@ -66,7 +66,7 @@ export default async function Overview() {
             {steps.map((s) => (
               <Link key={s.title} href={s.href} className="flex items-center gap-4 px-5 py-4 transition-colors first:rounded-t-xl last:rounded-b-xl hover:bg-canvas">
                 {s.done ? (
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-good text-white"><IconCheck className="h-4 w-4" /></span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-good text-surface"><IconCheck className="h-4 w-4" /></span>
                 ) : (
                   <span className="h-6 w-6 rounded-full border-2 border-line" />
                 )}

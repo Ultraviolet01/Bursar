@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { IconLine } from "@/components/icons";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -17,7 +18,8 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div className="auth-waves pointer-events-none absolute inset-x-0 bottom-0 h-24 opacity-20" aria-hidden />
       </aside>
-      <main id="main" className="flex items-center justify-center px-4 py-12 sm:px-8">
+      <main id="main" className="relative flex items-center justify-center px-4 py-12 sm:px-8">
+        <ThemeToggle className="absolute right-4 top-4" />
         <div className="animate-page w-full max-w-[420px]">
           <Link href="/" className="display mb-10 block text-[26px] tracking-[0.08em] text-ink lg:hidden">BURSAR</Link>
           {children}

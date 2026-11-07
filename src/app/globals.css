@@ -2,31 +2,157 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+/* Theme tokens (r g b). Light by default; dark follows the system unless the
+   founder picks one with the theme switch (html.light / html.dark). */
+:root {
+  --canvas: 243 246 245;
+  --surface: 255 255 255;
+  --line: 227 232 231;
+  --strong: 154 169 173;
+  --ink: 15 45 58;
+  --body: 38 56 63;
+  --muted: 83 99 106;
+  --faint: 86 102 108;
+  --chip: 236 239 239;
+  --navy: 16 44 56;
+  --navy-2: 22 57 74;
+  --navy-line: 42 75 90;
+  --teal: 14 94 86;
+  --teal-dark: 10 74 67;
+  --teal-soft: 220 235 231;
+  --teal-tint: 238 245 243;
+  --on-teal: 255 255 255;
+  --amber: 128 86 13;
+  --amber-soft: 243 231 209;
+  --amber-card: 244 233 214;
+  --amber-line: 227 207 168;
+  --amber-dot: 195 138 38;
+  --amber-ink: 92 71 24;
+  --good: 34 101 61;
+  --good-soft: 221 239 228;
+  --bad: 162 54 37;
+  --bad-soft: 247 225 220;
+  --bad-line: 232 185 176;
+  --sea: 175 203 211;
+  --sea-light: 202 221 226;
+  --sea-deep: 148 182 192;
+  --sea-foam: 233 242 244;
+  --sky-grid: 228 234 233;
+  --water: 199 218 223;
+  --hull: 16 44 56;
+  --deck: 30 74 92;
+  --house: 221 229 230;
+  color-scheme: light;
+}
+:root.dark {
+  --canvas: 14 23 27;
+  --surface: 21 33 39;
+  --line: 39 55 62;
+  --strong: 78 99 107;
+  --ink: 230 238 238;
+  --body: 201 213 214;
+  --muted: 157 174 178;
+  --faint: 151 168 172;
+  --chip: 34 50 58;
+  --navy: 10 20 24;
+  --navy-2: 18 35 42;
+  --navy-line: 44 68 80;
+  --teal: 91 192 176;
+  --teal-dark: 127 211 197;
+  --teal-soft: 22 53 47;
+  --teal-tint: 18 42 38;
+  --on-teal: 11 26 23;
+  --amber: 227 181 102;
+  --amber-soft: 58 45 20;
+  --amber-card: 42 34 19;
+  --amber-line: 92 74 38;
+  --amber-dot: 217 160 64;
+  --amber-ink: 235 210 154;
+  --good: 114 212 156;
+  --good-soft: 21 54 42;
+  --bad: 242 145 127;
+  --bad-soft: 61 29 25;
+  --bad-line: 110 59 51;
+  --sea: 43 70 81;
+  --sea-light: 26 44 52;
+  --sea-deep: 51 87 101;
+  --sea-foam: 30 49 56;
+  --sky-grid: 28 42 48;
+  --water: 36 65 75;
+  --hull: 29 58 71;
+  --deck: 58 112 134;
+  --house: 185 198 201;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --canvas: 14 23 27;
+    --surface: 21 33 39;
+    --line: 39 55 62;
+    --strong: 78 99 107;
+    --ink: 230 238 238;
+    --body: 201 213 214;
+    --muted: 157 174 178;
+    --faint: 151 168 172;
+    --chip: 34 50 58;
+    --navy: 10 20 24;
+    --navy-2: 18 35 42;
+    --navy-line: 44 68 80;
+    --teal: 91 192 176;
+    --teal-dark: 127 211 197;
+    --teal-soft: 22 53 47;
+    --teal-tint: 18 42 38;
+    --on-teal: 11 26 23;
+    --amber: 227 181 102;
+    --amber-soft: 58 45 20;
+    --amber-card: 42 34 19;
+    --amber-line: 92 74 38;
+    --amber-dot: 217 160 64;
+    --amber-ink: 235 210 154;
+    --good: 114 212 156;
+    --good-soft: 21 54 42;
+    --bad: 242 145 127;
+    --bad-soft: 61 29 25;
+    --bad-line: 110 59 51;
+    --sea: 43 70 81;
+    --sea-light: 26 44 52;
+    --sea-deep: 51 87 101;
+    --sea-foam: 30 49 56;
+    --sky-grid: 28 42 48;
+    --water: 36 65 75;
+    --hull: 29 58 71;
+    --deck: 58 112 134;
+    --house: 185 198 201;
+    color-scheme: dark;
+  }
+}
 html { scroll-behavior: smooth; }
-html, body { background: #F3F6F5; color: #26383F; }
+/* Safety net: nothing may make the page scroll sideways on a phone. */
+html, body { overflow-x: clip; }
+html, body { background: rgb(var(--canvas)); color: rgb(var(--body)); }
 body { font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
 
 .num { font-variant-numeric: tabular-nums; }
 .display { font-family: "DM Serif Display", Georgia, serif; letter-spacing: -0.02em; font-weight: 400; }
 
 /* Visible keyboard focus everywhere (WCAG 2.4.7). */
-:focus-visible { outline: 2px solid #0E5E56; outline-offset: 2px; border-radius: 6px; }
+:focus-visible { outline: 2px solid rgb(var(--teal)); outline-offset: 2px; border-radius: 6px; }
 .bg-navy :focus-visible, .bg-teal:focus-visible { outline-color: #E6B65C; }
+html { transition: background-color 300ms ease; }
 
 @layer components {
   .card { @apply rounded-2xl border border-line bg-surface; }
   .card-hover { @apply transition-all duration-200 hover:-translate-y-0.5 hover:border-strong hover:shadow-md; }
   .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-[15px] font-medium transition-all duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60; }
   .btn-outline { @apply btn border-line bg-surface text-ink hover:-translate-y-px hover:border-strong hover:shadow-sm; }
-  .btn-primary { @apply btn border-teal bg-teal text-white hover:-translate-y-px hover:bg-teal-dark hover:shadow-md hover:shadow-teal/20; }
+  .btn-primary { @apply btn border-teal bg-teal text-on-teal hover:-translate-y-px hover:bg-teal-dark hover:shadow-md hover:shadow-teal/20; }
   .btn-danger { @apply btn border-bad-line bg-surface text-bad hover:bg-bad-soft; }
   .btn-sm { @apply px-3 py-1.5 text-sm; }
   .input { @apply w-full rounded-lg border border-line bg-surface px-3 py-2 text-[15px] text-ink outline-none focus:border-teal; }
   .label { @apply mb-1 block text-sm text-muted; }
   .tab { @apply rounded-md px-3 py-1.5 text-[15px] text-muted transition-all duration-200 hover:bg-surface/60 hover:text-ink; }
   .tab-active { @apply bg-surface text-ink shadow-sm; }
-  .pill-primary { @apply inline-flex items-center rounded-full bg-teal px-5 py-2.5 text-[15px] font-medium text-white transition-all duration-200 hover:-translate-y-0.5 hover:bg-teal-dark hover:shadow-lg hover:shadow-teal/20 active:scale-[0.97]; }
+  .pill-primary { @apply inline-flex items-center rounded-full bg-teal px-5 py-2.5 text-[15px] font-medium text-on-teal transition-all duration-200 hover:-translate-y-0.5 hover:bg-teal-dark hover:shadow-lg hover:shadow-teal/20 active:scale-[0.97]; }
   .pill-outline { @apply inline-flex items-center rounded-full border border-line bg-surface px-4 py-1.5 text-ink transition-all duration-200 hover:-translate-y-0.5 hover:border-strong hover:shadow-md active:scale-[0.97]; }
   .nav-link { @apply relative text-body transition-colors hover:text-ink after:absolute after:-bottom-1 after:left-0 after:h-px after:w-full after:origin-left after:scale-x-0 after:bg-ink after:transition-transform after:duration-300 hover:after:scale-x-100; }
   .input { @apply transition-shadow focus:shadow-[0_0_0_3px_rgba(14,94,86,0.15)]; }

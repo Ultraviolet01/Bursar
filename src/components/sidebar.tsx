@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { IconCalendar, IconCog, IconGrid, IconInbox, IconList, IconMenu, IconPause, IconPlay, IconSliders, IconUsers, IconWallet, IconX } from "./icons";
 import { SubmitButton } from "./interactive";
+import { ThemeToggle } from "./theme-toggle";
 
 const ITEMS = [
   { href: "/app", label: "Overview", Icon: IconGrid },
@@ -67,7 +68,7 @@ function CompanySwitcher({ companies, activeId, mode, switchCompany }: { compani
         <div className="flex items-center justify-between gap-2">
           <span className="truncate text-[15px] font-medium text-ink">{active.name}</span>
           <span className="flex items-center gap-2">
-            <span className="rounded-md bg-[#ECEFEF] px-2 py-0.5 text-xs text-muted">{mode === "mock" ? "Mock" : "Sandbox"}</span>
+            <span className="rounded-md bg-chip px-2 py-0.5 text-xs text-muted">{mode === "mock" ? "Mock" : "Sandbox"}</span>
             <Chevrons />
           </span>
         </div>
@@ -168,6 +169,10 @@ function SidebarBody(props: SidebarProps & { onNavigate?: () => void }) {
               </span>
             </SubmitButton>
           </form>
+        </div>
+        <div className="flex items-center justify-between px-2">
+          <span className="text-sm text-muted">Theme</span>
+          <ThemeToggle />
         </div>
         <div className="flex items-center justify-between gap-2 rounded-xl px-2 py-1">
           <div className="min-w-0">

@@ -47,8 +47,8 @@ export function OnboardingBackdrop({ name }: { name: string }) {
               <div className="text-[15px] text-body">Total treasury</div>
               <div className="display mt-2 text-[56px] text-ink">0.00</div>
               <svg viewBox="0 0 600 160" className="mt-4 w-full">
-                <path d="M0,120 C80,110 120,60 200,70 S320,40 400,60 520,30 600,40" fill="none" stroke="#0E5E56" strokeWidth={2} />
-                <line x1={0} x2={600} y1={135} y2={135} stroke="#B07A1E" strokeDasharray="4 4" />
+                <path d="M0,120 C80,110 120,60 200,70 S320,40 400,60 520,30 600,40" fill="none" className="stroke-teal" strokeWidth={2} />
+                <line x1={0} x2={600} y1={135} y2={135} className="stroke-amber-dot" strokeDasharray="4 4" />
               </svg>
             </div>
             <div className="rounded-2xl border border-amber-line bg-amber-card p-5">

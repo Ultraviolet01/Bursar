@@ -171,41 +171,41 @@ export default async function Activity({ searchParams }: { searchParams: Promise
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[980px] text-left text-[15px]">
+            <div className="md:overflow-x-auto">
+              <table className="block w-full text-left text-[15px] md:table md:min-w-[980px]">
                 <caption className="sr-only">Bursar actions for {company.name}</caption>
-                <thead className="bg-canvas/60 text-muted">
+                <thead className="hidden bg-canvas/60 text-muted md:table-header-group">
                   <tr>
                     {["When", "What happened", "Wallet", "Amount", "Outcome", "Rule checked", "Blaaiz ref"].map((h) => (
                       <th key={h} scope="col" className={`px-5 py-3 font-normal ${h === "Amount" ? "text-right" : ""}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line">
+                <tbody className="block divide-y divide-line md:table-row-group">
                   {rows.map((a) => {
                     const p = JSON.parse(a.payload) as ProposedAction;
                     const o = outcome(a);
                     const ref = proof(a);
                     const out = a.status === "EXECUTED" && a.type !== "SWAP";
                     return (
-                      <tr key={a.id} className="align-top transition-colors hover:bg-canvas/60">
-                        <td className="whitespace-nowrap px-5 py-4 text-muted">{dateTime(a.createdAt)}</td>
-                        <td className="px-5 py-4">
+                      <tr key={a.id} className="grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-4 align-top transition-colors hover:bg-canvas/60 md:table-row md:p-0">
+                        <td data-label="When" className="block md:table-cell whitespace-nowrap md:px-5 md:py-4 text-muted before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden">{dateTime(a.createdAt)}</td>
+                        <td data-label="What happened" className="block col-span-2 md:table-cell md:px-5 md:py-4 before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden">
                           <Link href={a.status === "PENDING" || a.decidedBy === "OWNER" ? `/app/approvals?id=${a.id}` : "#"} className="text-ink">{title(a, payees.get(a.paymentId ?? ""))}</Link>
                           <div className="mt-1 max-w-[340px] text-sm text-muted">{a.explanation}</div>
                         </td>
-                        <td className="whitespace-nowrap px-5 py-4 text-body">{p.swap && a.type !== "PAY" ? `${p.swap.from} to ${p.swap.to}` : `${p.currency} wallet`}</td>
-                        <td className="num whitespace-nowrap px-5 py-4 text-right text-ink">{out ? "-" : ""}{formatMinor(p.amount)} <span className="text-faint">{p.currency}</span></td>
-                        <td className="px-5 py-4"><Pill tone={o.tone}>{o.label}</Pill></td>
-                        <td className="px-5 py-4 text-body">{a.reasonCode === "ROUTINE_OK" ? "Within all rules" : reasonLabel(a.reasonCode)}</td>
-                        <td className="whitespace-nowrap px-5 py-4">
+                        <td data-label="Wallet" className="block md:table-cell whitespace-nowrap md:px-5 md:py-4 text-body before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden">{p.swap && a.type !== "PAY" ? `${p.swap.from} to ${p.swap.to}` : `${p.currency} wallet`}</td>
+                        <td data-label="Amount" className="block md:table-cell num whitespace-nowrap md:px-5 md:py-4 text-right text-ink before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden">{out ? "-" : ""}{formatMinor(p.amount)} <span className="text-faint">{p.currency}</span></td>
+                        <td data-label="Outcome" className="block md:table-cell md:px-5 md:py-4 before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden"><Pill tone={o.tone}>{o.label}</Pill></td>
+                        <td data-label="Rule checked" className="block md:table-cell md:px-5 md:py-4 text-body before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden">{a.reasonCode === "ROUTINE_OK" ? "Within all rules" : reasonLabel(a.reasonCode)}</td>
+                        <td data-label="Blaaiz ref" className="block md:table-cell whitespace-nowrap md:px-5 md:py-4 before:mb-0.5 before:block before:text-xs before:uppercase before:tracking-wide before:text-muted before:content-[attr(data-label)] md:before:hidden">
                           {ref ? <span className="font-mono text-[14px] text-teal" title={ref}>{shortId(ref)}</span> : <span className="text-faint">None</span>}
                         </td>
                       </tr>
                     );
                   })}
                   {rows.length === 0 && (
-                    <tr><td colSpan={7} className="px-5 py-10 text-center text-muted">Nothing here yet. Run a cycle from the Overview.</td></tr>
+                    <tr className="block md:table-row"><td colSpan={7} className="px-5 py-10 text-center text-muted">Nothing here yet. Run a cycle from the Overview.</td></tr>
                   )}
                 </tbody>
               </table>

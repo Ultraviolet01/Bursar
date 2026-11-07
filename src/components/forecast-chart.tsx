@@ -51,14 +51,14 @@ export function ForecastChart({ points, buffer, currency }: { points: Point[]; b
       >
         {ticks.map((t) => (
           <g key={t}>
-            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} stroke="#E8ECEB" />
+            <line x1={L} x2={W - R} y1={y(t)} y2={y(t)} className="stroke-line" />
             <text x={L - 8} y={y(t) + 4} textAnchor="end" className="fill-faint font-mono text-[10px]">{compact(t)}</text>
           </g>
         ))}
-        <line x1={L} x2={W - R} y1={y(buffer)} y2={y(buffer)} stroke="#B07A1E" strokeDasharray="4 4" strokeWidth={1.25} />
+        <line x1={L} x2={W - R} y1={y(buffer)} y2={y(buffer)} className="stroke-amber-dot" strokeDasharray="4 4" strokeWidth={1.25} />
         <text x={W - R} y={y(buffer) - 6} textAnchor="end" className="fill-amber text-[11px]">Buffer</text>
-        <path d={`${path} L${x(points.length - 1)},${y(min)} L${x(0)},${y(min)} Z`} fill="#0E5E56" fillOpacity={0.07} className="animate-fade" style={{ animationDelay: "500ms" }} />
-        <path d={path} fill="none" stroke="#0E5E56" strokeWidth={2} strokeLinejoin="round" pathLength={1} className="animate-draw" style={{ strokeDasharray: 1, ["--len" as string]: 1 }} />
+        <path d={`${path} L${x(points.length - 1)},${y(min)} L${x(0)},${y(min)} Z`} fillOpacity={0.08} className="animate-fade fill-teal" style={{ animationDelay: "500ms" }} />
+        <path d={path} fill="none" strokeWidth={2} strokeLinejoin="round" pathLength={1} className="animate-draw stroke-teal" style={{ strokeDasharray: 1, ["--len" as string]: 1 }} />
         {points.map((p, i) =>
           (i % labelEvery === 0 && points.length - 1 - i >= labelEvery / 2) || i === points.length - 1 ? (
             <text key={p.date} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === points.length - 1 ? "end" : "middle"} className="fill-muted text-[11px]">
@@ -68,8 +68,8 @@ export function ForecastChart({ points, buffer, currency }: { points: Point[]; b
         )}
         {hover !== null && (
           <g>
-            <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="#8A989C" strokeWidth={1} />
-            <circle cx={x(hover)} cy={y(points[hover].value)} r={4.5} fill="#0E5E56" stroke="#fff" strokeWidth={2} />
+            <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} className="stroke-strong" strokeWidth={1} />
+            <circle cx={x(hover)} cy={y(points[hover].value)} r={4.5} className="fill-teal stroke-surface" strokeWidth={2} />
           </g>
         )}
       </svg>

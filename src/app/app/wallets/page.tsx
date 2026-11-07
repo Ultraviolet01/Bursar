@@ -208,17 +208,18 @@ export default async function Wallets({ searchParams }: { searchParams: Promise<
               <span className="text-sm text-muted">Every movement Bursar recorded in {sel}</span>
             </div>
             {ledger.length ? (
-              <table className="w-full text-left text-[15px]">
+              <table className="w-full table-fixed text-left text-[15px]">
                 <caption className="sr-only">{sel} ledger</caption>
+                <colgroup><col className="w-[34%] sm:w-[180px]" /><col /><col className="w-[30%] sm:w-[140px]" /></colgroup>
                 <thead className="bg-canvas/60 text-muted">
-                  <tr>{["When", "Movement", "Amount"].map((h) => <th key={h} scope="col" className={`px-6 py-2.5 font-normal ${h === "Amount" ? "text-right" : ""}`}>{h}</th>)}</tr>
+                  <tr>{["When", "Movement", "Amount"].map((h) => <th key={h} scope="col" className={`px-3 py-2.5 font-normal sm:px-6 ${h === "Amount" ? "text-right" : ""}`}>{h}</th>)}</tr>
                 </thead>
                 <tbody className="divide-y divide-line">
                   {ledger.map((l) => (
                     <tr key={l.id}>
-                      <td className="whitespace-nowrap px-6 py-3 text-muted">{dateTime(l.at)}</td>
-                      <td className="px-6 py-3"><span className="text-ink">{LEDGER_LABEL[l.kind] ?? l.kind}</span><span className="block text-sm text-muted">{l.memo}</span></td>
-                      <td className={`num whitespace-nowrap px-6 py-3 text-right ${bn(l.amount) < 0 ? "text-ink" : "text-good"}`}>{bn(l.amount) > 0 ? "+" : ""}{formatMinor(bn(l.amount))}</td>
+                      <td className="px-3 py-3 text-sm text-muted sm:px-6 sm:text-[15px]">{dateTime(l.at)}</td>
+                      <td className="px-3 py-3 [overflow-wrap:anywhere] sm:px-6"><span className="text-ink">{LEDGER_LABEL[l.kind] ?? l.kind}</span><span className="block text-sm text-muted">{l.memo}</span></td>
+                      <td className={`num px-3 py-3 text-right [overflow-wrap:anywhere] sm:px-6 ${bn(l.amount) < 0 ? "text-ink" : "text-good"}`}>{bn(l.amount) > 0 ? "+" : ""}{formatMinor(bn(l.amount))}</td>
                     </tr>
                   ))}
                 </tbody>
