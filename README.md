@@ -45,7 +45,10 @@ Live demo: https://bursar-beta.vercel.app (mock mode; sign in with Google).
 
 ## Walkthrough video
 
-[docs/bursar-walkthrough.mp4](docs/bursar-walkthrough.mp4) is 2.5 minutes long. It shows:
+<!-- To embed: edit this README on github.com, drag bursar-walkthrough.mp4 onto this line, and commit.
+     GitHub stores the video outside the repository and plays it inline. -->
+
+A 2.5 minute captioned walkthrough. It shows:
 - The landing page.
 - Google sign-in.
 - Onboarding, with automatic Blaaiz setup.
