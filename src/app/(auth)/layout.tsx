@@ -12,7 +12,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <p className="display mt-6 text-[44px] leading-[1.05]">Runs your treasury.<br />Never past your line</p>
           <ul className="mt-8 space-y-3 text-[16px] text-white/80">
             <li>Pays salaries, vendors and bills from your Blaaiz wallets</li>
-            <li>Swaps NGN and USD when a wallet runs short</li>
+            <li>Proposes a currency swap when a wallet runs short</li>
             <li>Asks you before anything over your line</li>
           </ul>
         </div>

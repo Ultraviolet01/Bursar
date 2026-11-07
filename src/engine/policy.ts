@@ -53,6 +53,13 @@ export function evaluate(action: Evaluable, ctx: PolicyContext): PolicyResult {
   );
 
   if (hasSwap && swap) {
+    // Hard rule: Bursar never swaps on its own. Every currency swap is the founder's call.
+    add({
+      id: "founder_swap",
+      label: "Founder approves swaps",
+      status: "needs_owner",
+      detail: "Bursar proposes swaps; only you can approve them",
+    });
     // Rebalancing only ever moves money between this company's own wallets.
     const own = ctx.wallets.some((w) => w.currency === swap.from) && ctx.wallets.some((w) => w.currency === swap.to);
     add({

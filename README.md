@@ -1,6 +1,6 @@
 # Bursar
 
-An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a company's NGN, USD, GBP and EUR wallets, forecasts upcoming payments, and pays, swaps, defers or escalates. It always stays inside hard limits the owner sets.
+An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a company's NGN, USD, GBP and EUR wallets, forecasts upcoming payments, and pays, defers or escalates. Bursar pays routine bills on its own, but every currency swap waits for the founder's approval. It always stays inside hard limits the owner sets.
 
 - One founder account can run several companies. Each company has its own wallets, payees, rules, approvals and Blaaiz credentials.
 - Built for the Blaaiz Buildathon (GDG Ilorin x Blaaiz).
@@ -32,8 +32,8 @@ Bursar is a treasury agent that watches every wallet continuously and acts on Bl
 
 | Problem | What Bursar does |
 |---------|------------------|
-| Cash in the wrong currency | Spots the imbalance before a bill is due. It rebalances between the company's own wallets with one swap from the wallet that has surplus, previewing the rate and fee first. It skips swaps when the rate is worse than its 7-day average by more than your band. |
-| Late bills, constant attention | Knows every scheduled bill: payroll, domains, SaaS, vendors. Each cycle it pays what is due in priority order, payroll first. It swaps first when needed, defers what can wait, and asks the owner only for what is outside the rules. |
+| Cash in the wrong currency | Spots the imbalance before a bill is due. It proposes one swap from the wallet that has surplus, with the rate and fee previewed. The founder approves it, and Bursar then pays the bills that were waiting on it. It does not propose swaps when the rate is worse than its 7-day average by more than your band. |
+| Late bills, constant attention | Knows every scheduled bill: payroll, domains, SaaS, vendors. Each cycle it pays what is due in priority order, payroll first. When a currency is short it proposes a swap and holds those bills until you approve. It defers what can wait, and asks the owner about anything outside the rules. |
 | No continuous view | Runs every 10 minutes, and whenever a bill is added, money arrives or a swap is approved. It forecasts each wallet 14 days ahead and flags the day any of them would drop below its buffer. |
 | Idle or trapped cash | Watches surplus against upcoming needs, and proposes top-up swaps before a wallet runs short, not after. A buffer per wallet keeps enough cash in place for what is coming. |
 
@@ -146,8 +146,8 @@ The Overview shows these five steps as a checklist until each is done.
 |-------|--------------|
 | **Observe** | Pull every wallet balance and the NGN rate for each currency (plus a 7-day average). Load bills inside the horizon (salaries, domains, SaaS, vendors) and a fee quote for each. |
 | **Forecast** | Projected balance per currency after upcoming bills. Flags the first day each wallet would fall below its buffer. |
-| **Decide** | In priority order. 1) Pay due bills from the currency already held, payroll first. 2) **Rebalance**: one swap per short currency from the wallet with the most surplus above its buffer. 3) Pay the bills that swap funded. 4) Defer non-critical bills when cash is tight or the rate is poor. 5) Escalate anything outside the rules. Then propose top-ups for wallets forecast to dip below their buffer. |
-| **Act** | Preview the fee and rate with Blaaiz. Re-check every rule with live balances. Then `POST /swap` or `POST /payout` if allowed; otherwise create a proposal for the owner. |
+| **Decide** | In priority order. 1) Pay due bills from the currency already held, payroll first. 2) **Rebalance**: propose one swap per short currency from the wallet with the most surplus above its buffer. 3) Pay the bills that swap funds, once the founder approves it. 4) Defer non-critical bills when cash is tight or the rate is poor. 5) Escalate anything outside the rules. Then propose top-ups for wallets forecast to dip below their buffer. |
+| **Act** | Preview the fee and rate with Blaaiz. Re-check every rule with live balances. Then `POST /payout` for routine bills inside the rules. Every swap, and anything outside the rules, becomes a proposal; `POST /swap` only runs after the founder approves. |
 | **Reconcile** | Payout webhooks and transaction status mark bills paid or failed. Every movement goes into the local ledger: payouts, fees, swaps in and out, deposits, refunds. |
 | **Learn** | Log outcomes: approvals against rejections by reason, the rates swaps got against the 7-day average, and what happened to deferred bills. Repeated patterns become rule suggestions in Approvals. |
 
@@ -161,13 +161,13 @@ The Overview shows these five steps as a checklist until each is done.
 - **Swap (rebalance)** when a currency needed now is short and another wallet has surplus above its buffer.
   - The swap must use an allowed pair, within the rate band.
   - The swap brings in enough to refill the buffer too.
-  - It is planned even when it is over the swap cap. Policy then turns it into a proposal, and the bills it funds are held until you approve.
+  - **Every swap waits for the founder.** Bursar never swaps on its own. It is a hard rule in the policy engine that no setting turns off. The bills a swap funds are held until you approve it, then paid straight away.
 - **Defer** when the bill is not critical and cash is tight or the rate is poor. After the max defer window it escalates instead.
 - **Escalate** for new payees, amounts over a cap, critical shortfalls, failed payouts, or any rule violation.
 
 ### Rebalancing
 
-Rebalancing moves money between this company's own wallets so no currency runs dry while another sits idle. It is a `POST /swap` between two wallets of the same business.
+Rebalancing moves money between this company's own wallets so no currency runs dry while another sits idle. Bursar proposes it; the founder approves it; then it is a `POST /swap` between two wallets of the same business.
 
 - Only between this business's own wallets. A policy check confirms both wallets belong to the company.
 - Never takes the source wallet below its buffer, and refills the target's buffer.

@@ -39,7 +39,13 @@ beforeEach(async () => {
 describe("cycle", () => {
   it("runs the demo cycle and never pays twice", async () => {
     const first = await runCycle(db, client, companyId, "MANUAL");
-    expect(first.counts).toMatchObject({ paid: 5, swapped: 1, waiting: 1 });
+    // Payroll pays alone. The NGN to USD rebalance and the new vendor wait for the founder; the two USD bills are held.
+    expect(first.counts).toMatchObject({ paid: 3, swapped: 0, waiting: 2, held: 2 });
+    expect(await db.execution.count({ where: { companyId, kind: "SWAP" } })).toBe(0);
+    const swap = await db.action.findFirstOrThrow({ where: { companyId, type: "SWAP", status: "PENDING" } });
+    expect((await approveAction(db, client, swap.id)).status).toBe("EXECUTED");
+    // Approving the swap runs a follow-up cycle that pays the held USD bills.
+    expect((await db.cycle.findFirstOrThrow({ where: { companyId, trigger: "APPROVAL" } })).summary).toMatch(/2 paid/);
     await settleAll();
     const second = await runCycle(db, client, companyId, "MANUAL");
     expect(second.counts).toMatchObject({ paid: 0, waiting: 0 });
@@ -168,6 +174,7 @@ describe("full lifecycle", () => {
 
   it("previews fees and writes a ledger entry for every movement", async () => {
     await runCycle(db, client, companyId, "MANUAL");
+    await approveAction(db, client, (await db.action.findFirstOrThrow({ where: { companyId, type: "SWAP", status: "PENDING" } })).id);
     const swapExec = await db.execution.findFirstOrThrow({ where: { companyId, kind: "SWAP" } });
     expect(JSON.parse(swapExec.request)._preview.fromAmount).toBeGreaterThan(0);
     const ledger = await db.ledgerEntry.findMany({ where: { companyId } });
@@ -192,10 +199,12 @@ describe("full lifecycle", () => {
   it("rebalances NGN into an empty EUR wallet to pay a EUR supplier and keep the EUR buffer", async () => {
     const other = mockFor(otherId);
     const res = await runCycle(db, other, otherId, "MANUAL");
-    // One rebalance into EUR for the supplier due today, one top-up into USD for a bill due in 4 days.
-    expect(res.counts).toMatchObject({ swapped: 2, paid: 1 });
+    // A rebalance into EUR for the supplier due today and a top-up into USD for a bill due in 4 days: both wait for the founder.
+    expect(res.counts).toMatchObject({ swapped: 0, paid: 0, waiting: 2, held: 1 });
     const rebalance = await db.action.findFirstOrThrow({ where: { companyId: otherId, type: "SWAP", reasonCode: "REBALANCE" } });
     expect(JSON.parse(rebalance.payload).currency).toBe("EUR");
+    await approveAction(db, other, rebalance.id);
+    expect(await db.scheduledPayment.count({ where: { companyId: otherId, payee: { currency: "EUR" }, status: "EXECUTING" } })).toBe(1);
     const eur = await db.mockWallet.findFirstOrThrow({ where: { companyId: otherId, currency: "EUR" } });
     expect(Number(eur.balance)).toBeGreaterThanOrEqual(20_000);
   });

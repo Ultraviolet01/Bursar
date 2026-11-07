@@ -74,11 +74,11 @@ export default async function Rules() {
             <input type="checkbox" name="autoExecute" defaultChecked={p.autoExecute} className="mt-1 h-4 w-4 accent-teal" />
             <span>
               <span className="text-ink">Auto-execute routine actions</span>
-              <span className="block text-sm text-muted">When off, every payment and swap becomes a proposal. New payees always need you either way.</span>
+              <span className="block text-sm text-muted">Routine payments inside your rules run on their own. When off, every payment becomes a proposal too. Swaps and new payees always need you.</span>
             </span>
           </label>
           <div className="mt-6 rounded-xl bg-canvas p-4 text-sm text-muted">
-            Always on: one payout per payment occurrence (merchant reference), allowlist for new payees, the pause switch, and a live re-check of every rule right before Blaaiz is called.
+            Always on: every currency swap waits for your approval, one payout per payment occurrence (merchant reference), allowlist for new payees, the pause switch, and a live re-check of every rule right before Blaaiz is called.
           </div>
           <div className="mt-6"><SubmitButton className="btn-primary w-full sm:w-auto" pendingText="Saving">Save rules</SubmitButton></div>
         </div>

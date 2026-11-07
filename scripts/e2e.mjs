@@ -97,19 +97,27 @@ check(scrolled > 200 && before.y === after.y && after.y === 0, `sidebar did not 
 await page.evaluate(() => window.scrollTo(0, 0));
 await scan(page, "overview (before cycle)");
 
-step("4. Cycle: observe, forecast, decide, act, reconcile");
+step("4. Cycle: payments run alone, every swap waits for the founder");
 await page.getByRole("button", { name: "Run cycle" }).click();
 const t1 = await toast(page, /Cycle/);
-check(/5 paid, 1 swap, 1 waiting for you/.test(t1), `toast: "${t1}" (payroll from NGN, one NGN to USD rebalance, then the USD bills)`);
-await page.waitForTimeout(4000); // mock payout.processing then payout.completed webhooks
+check(/3 paid, 2 waiting for you, 2 held for a rebalance/.test(t1), `toast: "${t1}" (payroll paid from NGN; the NGN to USD swap and the new vendor wait; both USD bills held)`);
+await page.goto(`${BASE}/app/activity?tab=swaps`);
+check(await visible(page.getByRole("link", { name: "Rebalance NGN to USD" })), "activity shows the rebalance as a proposal");
+check((await page.getByText("Waiting", { exact: true }).count()) >= 1, "the swap is waiting, not executed");
+
+step("4b. Founder approves the swap; Bursar pays the held bills");
+await page.goto(`${BASE}/app/approvals`);
+await page.getByRole("link", { name: /Rebalance NGN to USD/ }).first().click();
+check(await visible(page.getByText("Founder approves swaps")), "policy check: the founder approves swaps");
+await page.getByRole("button", { name: "Approve and run" }).click();
+check(/Approved #\d+/.test(await toast(page, /Approved/)), "swap approved");
+await page.waitForTimeout(4000); // follow-up cycle pays the held bills; mock webhooks settle them
 await page.goto(`${BASE}/app/payments?status=PAID&category=ALL`);
-check((await page.locator("tbody tr").count()) === 5, "5 payments reconciled to Paid by webhooks");
+check((await page.locator("tbody tr").count()) === 5, "5 payments reconciled to Paid by webhooks (3 alone, 2 after the approved swap)");
 await page.goto(`${BASE}/app/payments?status=SCHEDULED&category=ALL`);
 check((await page.getByText("Monthly").count()) >= 5, "next monthly occurrences were scheduled");
 await shot(page, "payments");
 await scan(page, "payments");
-await page.goto(`${BASE}/app/activity?tab=swaps`);
-check(await visible(page.getByRole("link", { name: "Rebalance NGN to USD" })), "activity shows the rebalance swap");
 await page.goto(`${BASE}/app/wallets?c=USD`);
 check((await page.locator("table").filter({ hasText: "Swap in" }).count()) === 1, "USD ledger records the swap and payouts");
 await page.goto(`${BASE}/app`);
@@ -156,7 +164,7 @@ await scan(page, "payees");
 await page.goto(`${BASE}/app`);
 await page.getByRole("button", { name: "Run cycle" }).click();
 const t4 = await toast(page, /Cycle/);
-check(/swap|Nothing due|paid/.test(t4), `Ilorin cycle toast: "${t4}"`);
+check(/waiting for you/.test(t4) && !/swap/.test(t4), `Ilorin cycle toast: "${t4}" (swaps wait for the founder)`);
 await page.goto(`${BASE}/app/wallets?c=USD`);
 await shot(page, "wallets-ilorin");
 await scan(page, "wallets");

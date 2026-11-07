@@ -64,7 +64,11 @@ describe("policy", () => {
       type: "SWAP", amount: M(500), currency: "USD", fee: 0, reasonCode: "BELOW_BUFFER_FORECAST", reasons: [], notes: [],
       swap: { from: "NGN", to: "USD", amountType: "to", toAmount: M(500), fromAmount: M(753_750), rate: 1500 },
     };
-    expect(evaluate(swap, ctx()).autoOk).toBe(true);
+    // Bursar never swaps on its own: every swap needs the founder, and approval clears it.
+    expect(evaluate(swap, ctx()).autoOk).toBe(false);
+    expect(status(evaluate(swap, ctx()), "founder_swap")).toBe("needs_owner");
+    expect(evaluate(swap, ctx()).ownerOk).toBe(true);
+    expect(status(evaluate(swap, ctx({ ownerApproved: true })), "founder_swap")).toBe("approved");
     expect(status(evaluate(swap, ctx({ policy: policy({ allowedPairs: [] }) })), "pair")).toBe("fail");
     expect(status(evaluate(swap, ctx({ market: market({ USD: 1600 }, { USD: 1500 }) })), "rate")).toBe("needs_owner");
     expect(status(evaluate(swap, ctx({ policy: policy({ perSwapCapNgn: M(500_000) }) })), "swap_cap")).toBe("needs_owner");

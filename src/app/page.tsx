@@ -7,7 +7,7 @@ const GITHUB = "https://github.com/ultraviolet01/bursar";
 
 const RULES = [
   { what: "Pay an allowlisted payee under your caps", who: "Alone", tone: "text-[#7FD1A8]" },
-  { what: "Swap NGN and USD inside your rate band", who: "Alone", tone: "text-[#7FD1A8]" },
+  { what: "Swap between currencies", who: "Asks you", tone: "text-[#E6B65C]" },
   { what: "Pay someone it has never paid", who: "Asks you", tone: "text-[#E6B65C]" },
   { what: "Pay over a per-payment or daily cap", who: "Asks you", tone: "text-[#E6B65C]" },
   { what: "Spend a wallet's buffer", who: "Asks you", tone: "text-[#E6B65C]" },
@@ -41,7 +41,7 @@ export default function Landing() {
         </h1>
         <div className="mt-8 flex animate-page flex-col gap-6 [animation-delay:280ms] lg:flex-row lg:items-end lg:justify-between">
           <p className="max-w-[560px] text-[17px] leading-relaxed text-body">
-            Bursar is a treasury agent for your company. It pays salaries, vendors and bills, swaps NGN and USD when a wallet runs short, and stops at the line you draw.
+            Bursar is a treasury agent for your company. It pays salaries, vendors and bills on its own, proposes a currency swap when a wallet runs short, and stops at the line you draw.
           </p>
           <div className="flex gap-3">
             <Link href="/signup" className="pill-primary">Get started</Link>
@@ -59,8 +59,8 @@ export default function Landing() {
         <div className="mt-12 grid gap-12 md:grid-cols-3">
           {[
             ["Draw your line", "Set caps per payment and per day, a buffer for each wallet, and which swaps are allowed. Only you can change them."],
-            ["Bursar keeps watch", "It forecasts every wallet 14 days ahead. When a bill is due it pays, swaps first, or holds a bill that can wait."],
-            ["You sign the big ones", "Anything over your line waits in your inbox with Bursar's reasons and the live rule checks attached."],
+            ["Bursar keeps watch", "It forecasts every wallet 14 days ahead. When a bill is due it pays it, or holds a bill that can wait. If a currency is short, it proposes a swap."],
+            ["You sign the big ones", "Every swap, and anything over your line, waits in your inbox with Bursar's reasons and the live rule checks attached."],
           ].map(([t, d], i) => (
             <Reveal key={t} delay={i * 120} className="group">
               <div className="display text-[56px] leading-none text-teal transition-transform duration-300 group-hover:-translate-y-1">{i + 1}</div>
