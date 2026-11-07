@@ -41,7 +41,7 @@ export default function Landing() {
         </h1>
         <div className="mt-8 flex animate-page flex-col gap-6 [animation-delay:280ms] lg:flex-row lg:items-end lg:justify-between">
           <p className="max-w-[560px] text-[17px] leading-relaxed text-body">
-            Bursar is a treasury agent for your company&apos;s Blaaiz wallets. It pays salaries, vendors and bills, swaps NGN and USD when a wallet runs short, and stops at the line you draw.
+            Bursar is a treasury agent for your company. It pays salaries, vendors and bills, swaps NGN and USD when a wallet runs short, and stops at the line you draw.
           </p>
           <div className="flex gap-3">
             <Link href="/signup" className="pill-primary">Get started</Link>

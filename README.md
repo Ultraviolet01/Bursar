@@ -7,6 +7,39 @@ An autonomous treasury agent for companies, built on Blaaiz. Bursar watches a co
 
   https://github.com/user-attachments/assets/74a1ff11-799d-48b9-aa55-c369b4e71e4a
 
+## The problem
+
+Small companies in Nigeria and across Africa hold money in several currencies (NGN, USD and others). They pay staff, contractors and vendors in different currencies. Today the founder does this by hand:
+
+- Checking every wallet's balance.
+- Working out whether there is enough for what is due.
+- Converting at whatever rate is showing that day.
+- Paying people one by one.
+
+Mistakes are common, and they cost money and trust:
+
+- **Late salaries**, because nobody noticed a wallet was short until payday.
+- **Converting at a bad moment**, because the swap happened when the bill was due, not when the rate was fair.
+- **Paying the same invoice twice**, because there is no record tying a payment to a bill.
+- **Draining a wallet** below what is needed for next week's payroll or suppliers.
+- **No trail of who decided what**, so it is hard to see why money moved.
+
+## How Bursar solves it
+
+Bursar does the treasury work on Blaaiz and stays inside limits the founder sets.
+
+| Problem | What Bursar does |
+|---------|------------------|
+| Late salaries | Forecasts every wallet 14 days ahead and pays due bills in priority order, payroll first. |
+| A currency runs short | Rebalances between the company's own wallets: one swap from the wallet with surplus, then it pays the bills. |
+| Converting at a bad moment | Skips swaps when the rate is worse than its 7-day average by more than your band, and defers bills that can wait. |
+| Paying twice | Gives every payout a unique merchant reference per bill. Running a cycle twice never pays twice. |
+| Draining a wallet | Keeps a buffer per wallet that no automatic action may touch. |
+| Big or unusual payments | Asks the owner before paying new payees, amounts over a cap, or anything outside the rules, with its reasons attached. |
+| No trail | Records every decision with the rule it checked, keeps a ledger of every movement, and exports both to Excel. |
+
+Money decisions come from fixed, tested rules, not an AI model. Every action is checked twice before Blaaiz is called, and the founder can pause everything at any time.
+
 ## Quick start (mock mode)
 
 ```bash
